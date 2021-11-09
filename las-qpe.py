@@ -51,10 +51,12 @@ las = LASSCF(mf, (2,2),(2,2), spin_sub=(1,1))
 # Localize the chosen fragment active spaces
 frag_atom_list = ((0,1),(2,3))
 loc_mo_coeff = las.localize_init_guess(frag_atom_list, mf.mo_coeff)
+las.kernel(loc_mo_coeff)
+print("LASSCF energy: ", las.e_tot)
 
-ncore = las.ncore
-ncas = las.ncas
-ncas_sub = las.ncas_sub
+ncore = las.ncore * 2
+ncas = las.ncas * 2
+ncas_sub = las.ncas_sub *2
 
 print ("Ncore: ",las.ncore, "Ncas: ",las.ncas, "Ncas_sub", las.ncas_sub)
 
@@ -71,13 +73,26 @@ for i, sub in enumerate(ncas_sub):
 # with h1' = h1_{k1}^{k2} + \sum_i h2_{k2 i}^{k1 i} + \sum{L \neq K} h2_{k2 l2}^{k1 l1} D_{l2}^{l1}
 
 # First, construct D and ints
-D = mf.make_rdm1(mo_coeff=loc_mo_coeff)
+D = mf.make_rdm1(mo_coeff=las.mo_coeff)
+D_so = np.repeat(D, 2, axis=0)
+D_so = np.repeat(D_so, 2, axis=1)
+print("D:\n",D)
 
-hcore_ao = mol.intor_symmetric('int1e_kin') + mol.intor_symmetric('int1e_nuc')
-hcore_mo = np.einsum('pi,pq,qj->ij', loc_mo_coeff, hcore_ao, loc_mo_coeff)
+hcore_ao = mf.get_hcore(mol)
+hcore_mo = np.einsum('pi,pq,qj->ij', las.mo_coeff, hcore_ao, las.mo_coeff)
+# Convert to spin orbitals
+hcore_so = np.repeat(hcore_mo, 2, axis=0)
+hcore_so = np.repeat(hcore_so, 2, axis=1)
 
-eri_4fold = ao2mo.kernel(mol.intor('int2e'), mo_coeffs=loc_mo_coeff)
+eri_4fold = ao2mo.kernel(mol.intor('int2e'), mo_coeffs=las.mo_coeff)
 eri = ao2mo.restore(1, eri_4fold,mol.nao_nr())
+# Convert to spin orbitals
+eri_so = np.repeat(eri, 2, axis=0)
+eri_so = np.repeat(eri_so, 2, axis=1)
+eri_so = np.repeat(eri_so, 2, axis=2)
+eri_so = np.repeat(eri_so, 2, axis=3)
+# Antisymmetrize
+eri_so = eri_so - np.swapaxes(eri_so, 1, 3) 
 
 # Storing each fragment's h1 and h2 as a list
 h1_frag = []
@@ -85,29 +100,53 @@ h2_frag = []
 
 # Then construct h1' for each fragment
 for idx in idx_list[1:]:
-    inactive_mask = np.arange(mol.nao_nr())
-    inactive_mask = np.delete(inactive_mask, idx)
-    eri_mix = eri[:,:,:,inactive_mask]
-    eri_mix = eri_mix[:,:,inactive_mask,:]
-    h1p = hcore_mo[idx,idx]
+    inactive_mask = idx_list[0]
+    eri_mix = eri_so[:,:,inactive_mask,inactive_mask]
+    print(eri_mix.shape)
+    h1p = hcore_so[idx,idx]
     if h1p.size == 0:
         h1p = np.einsum('jkii->jk', eri_mix[idx,idx,:,:])
         for i,idx2 in enumerate(idx_list):
             if i > 0 and idx2 != idx:
-                h1p = np.einsum('ijkl,kl->ij', eri[idx,idx,idx2,idx2],D[idx2,idx2])
+                h1p += np.einsum('ijkl,kl->ij', eri_so[idx,idx,idx2,idx2],D[idx2,idx2])
     else:
         h1p += np.einsum('jkii->jk', eri_mix[idx,idx,:,:])
         for i,idx2 in enumerate(idx_list):
             if i > 0 and idx2 != idx:
-                h1p += np.einsum('ijkl,kl->ij', eri[idx,idx,idx2,idx2],D[idx2,idx2])
+                print("ERI:\n", eri_so[idx,idx,idx2,idx2])
+                print("D:\n", D_so[idx2,idx2])
+                print("h1p before:\n", h1p)
+                h1p += np.einsum('ijkl,kl->ij', eri_so[idx,idx,idx2,idx2],D_so[idx2,idx2])
+                print("h1p after:\n", h1p)
 
-    print("h1p is same as hcore: {}".format(np.allclose(h1p, hcore_mo)))
     # Finally, construct total H_frag
     h1_frag.append(h1p)
     h2_frag.append(eri[idx,idx,idx,idx])
 
-print(h1_frag)
-print(h2_frag)
+print("Hcore:\n", hcore_mo)
+print("H1_frag:\n", h1_frag)
+
+for f in range(len(ncas_sub)):
+    print("H1_frag shape: ", h1_frag[f].shape)
+    print("H2_frag shape: ", h2_frag[f].shape)
+
+exit()
+
+# Function below stolen from qiskit's Hamiltonian Phase Estimation class
+def _remove_identity(pauli_sum):
+    """Remove any identity operators from `pauli_sum`. Return
+    the sum of the coefficients of the identities and the new operator.
+    """
+    idcoeff = 0.0
+    ops = []
+    for op in pauli_sum:
+        p = op.primitive
+        if p.x.any() or p.z.any():
+            ops.append(op)
+        else:
+            idcoeff += op.coeff
+
+    return idcoeff, SummedOp(ops)
 
 for frag in range(len(ncas_sub)):
     # For QPE, need second_q_ops
@@ -117,7 +156,7 @@ for frag in range(len(ncas_sub)):
     num_beta = int(mol.nelec[1])
 
     particle_number = ParticleNumber(
-        num_spin_orbitals=ncas_sub[frag]*2,
+        num_spin_orbitals=ncas_sub[frag],
         num_particles=(num_alpha, num_beta),
     )
 
@@ -164,10 +203,14 @@ for frag in range(len(ncas_sub)):
     elif isinstance(hamiltonian, PauliOp):
         hamiltonian = SummedOp([hamiltonian])
 
-    pe_scale = PhaseEstimationScale.from_pauli_sum(hamiltonian)
+    if isinstance(hamiltonian, SummedOp):
+        id_coefficient, hamiltonian_no_id = _remove_identity(hamiltonian)
+    else:
+        raise TypeError("Hamiltonian must be PauliSumOp, PauliOp or SummedOp.")
+    pe_scale = PhaseEstimationScale.from_pauli_sum(hamiltonian_no_id)
 
     # QK: scale so that phase does not wrap.
-    scaled_hamiltonian = -pe_scale.scale * hamiltonian
+    scaled_hamiltonian = -pe_scale.scale * hamiltonian_no_id  
 
     # Default evolution: PauliTrotterEvolution
     evolution = PauliTrotterEvolution()
@@ -190,14 +233,12 @@ for frag in range(len(ncas_sub)):
 
     # Create an HF initial state and add it to the estimate function
     # For our (H2)_2 system 8 spin orbs, 2 alpha 2 beta electrons
-    init_state = HartreeFock(8, (2,2), qubit_converter)
+    init_state = HartreeFock(ncas_sub[frag], (num_alpha,num_beta), qubit_converter)
 
     # Estimate takes in a SummedPauli or a PauliOp and outputs a scaled estimate of the eigenvalue
     res = qpe_solver.estimate(unitary=unitary, state_preparation=init_state)
 
     print(res)
-    scaled_phases = pe_scale.scale_phases(res.filter_phases(cutoff=0.0,as_float=True))
+    scaled_phases = pe_scale.scale_phases(res.filter_phases(cutoff=0.0, as_float=True), id_coefficient=id_coefficient)
     print(scaled_phases)
 
-las.kernel(loc_mo_coeff)
-print("LASSCF energy: ", las.e_tot)

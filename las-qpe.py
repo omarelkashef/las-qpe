@@ -83,18 +83,22 @@ h1_frag = []
 h2_frag = []
 
 # Then construct h1' for each fragment
-for idx in idx_list:
+for idx in idx_list[1:]:
     inactive_mask = np.arange(mol.nao_nr())
     inactive_mask = np.delete(inactive_mask, idx)
     eri_mix = eri[:,:,:,inactive_mask]
-    eri_mix = eri_mix[:,inactive_mask,:,:]
+    eri_mix = eri_mix[:,:,inactive_mask,:]
     h1p = hcore_mo[idx,idx]
-    if not h1p.size:
-        continue
-    h1p += np.einsum('jiki->jk', eri_mix[idx,:,idx,:])
-    for i,idx2 in enumerate(idx_list):
-        if i > 0 and idx2 != idx:
-            h1p += np.einsum('ikjl,kl->ij', eri[idx,idx2,idx,idx2],D[idx2,idx2])
+    if h1p.size == 0:
+        h1p = np.einsum('jkii->jk', eri_mix[idx,idx,:,:])
+        for i,idx2 in enumerate(idx_list):
+            if i > 0 and idx2 != idx:
+                h1p = np.einsum('ijkl,kl->ij', eri[idx,idx,idx2,idx2],D[idx2,idx2])
+    else:
+        h1p += np.einsum('jkii->jk', eri_mix[idx,idx,:,:])
+        for i,idx2 in enumerate(idx_list):
+            if i > 0 and idx2 != idx:
+                h1p += np.einsum('ijkl,kl->ij', eri[idx,idx,idx2,idx2],D[idx2,idx2])
 
     # Finally, construct total H_frag
     h1_frag.append(h1p)
@@ -107,11 +111,11 @@ for frag in range(len(ncas_sub)):
     # For QPE, need second_q_ops
     # Hacking together an ElectronicStructureDriverResult to create second_q_ops
     # Lines below stolen from qiskit's FCIDump driver and modified
-    num_alpha = int(mol.nelec[0] / 2)
-    num_beta = int(mol.nelec[1] / 2)
+    num_alpha = int(mol.nelec[0])
+    num_beta = int(mol.nelec[1])
 
     particle_number = ParticleNumber(
-        num_spin_orbitals=ncas_sub[frag],
+        num_spin_orbitals=ncas_sub[frag]*2,
         num_particles=(num_alpha, num_beta),
     )
 

@@ -25,8 +25,10 @@ args = parser.parse_args()
 logging.basicConfig(filename='qiskit-qpe.log', level=logging.DEBUG)
 
 # Define molecule in qiskit
-qmol = Molecule(geometry=[['H', [0,0,0]],['H', [0.7,0,0]]],
+qmol = Molecule(geometry=[['H', [0,0,0]],['H', [1.0,0,0]],['H', [0.2,3.9,0.1]],['H', [1.159166,4.1,-0.1]]],
                          charge=0, multiplicity=1)
+#qmol = Molecule(geometry=[['H', [0,0,0]],['H', [0.7,0,0]]],
+#                         charge=0, multiplicity=1)
 
 # Set driver type and feed in molecule and basis
 driver = ElectronicStructureMoleculeDriver(qmol, basis='sto3g', method=MethodType.RHF,
@@ -89,7 +91,7 @@ unitary = unitary_circuit.decompose().decompose()
 
 # Create an HF initial state and add it to the estimate function
 # For our (H2)_2 system 8 spin orbs, 2 alpha 2 beta electrons
-init_state = HartreeFock(4, (1,1), qubit_converter)
+init_state = HartreeFock(8, (2,2), qubit_converter)
 
 # Estimate takes in a SummedPauli or a PauliOp and outputs a scaled estimate of the eigenvalue
 res = qpe_solver.estimate(unitary=unitary, state_preparation=init_state)

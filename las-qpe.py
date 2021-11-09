@@ -43,13 +43,16 @@ mol = gto.M (atom = xyz, basis = 'sto-3g', output='h4_sto3g.log',
 
 # Do RHF
 mf = scf.RHF(mol).run()
+print("HF energy: ", mf.e_tot)
 
 # Create LASSCF object
 las = LASSCF(mf, (4,),(4,), spin_sub=(1,))
 
 # Localize the chosen fragment active spaces
 frag_atom_list = ((0,1,2,3),)
-mf.mo_coeff = las.localize_init_guess(frag_atom_list, mf.mo_coeff)
+loc_mo_coeff = las.localize_init_guess(frag_atom_list, mf.mo_coeff)
+las.kernel(loc_mo_coeff)
+print("LASSCF energy: ", las.e_tot)
 
 ncore = las.ncore
 ncas = las.ncas
@@ -70,12 +73,12 @@ for i, sub in enumerate(ncas_sub):
 # with h1' = h1_{k1}^{k2} + \sum_i h2_{k2 i}^{k1 i} + \sum{L \neq K} h2_{k2 l2}^{k1 l1} D_{l2}^{l1}
 
 # First, construct D and ints
-D = mf.make_rdm1(mo_coeff=mf.mo_coeff)
+D = mf.make_rdm1(mo_coeff=las.mo_coeff)
 
 hcore_ao = mol.intor_symmetric('int1e_kin') + mol.intor_symmetric('int1e_nuc')
-hcore_mo = np.einsum('pi,pq,qj->ij', mf.mo_coeff, hcore_ao, mf.mo_coeff)
+hcore_mo = np.einsum('pi,pq,qj->ij', las.mo_coeff, hcore_ao, las.mo_coeff)
 
-eri_4fold = mol.intor('int2e')
+eri_4fold = ao2mo.kernel(mol.intor('int2e'), mo_coeffs=las.mo_coeff)
 eri = ao2mo.restore(1, eri_4fold,mol.nao_nr())
 
 # Storing each fragment's h1 and h2 as a list
@@ -100,12 +103,13 @@ for idx in idx_list[1:]:
             if i > 0 and idx2 != idx:
                 h1p += np.einsum('ijkl,kl->ij', eri[idx,idx,idx2,idx2],D[idx2,idx2])
 
+    print("h1p is same as hcore: {}".format(np.allclose(h1p, hcore_mo)))
     # Finally, construct total H_frag
     h1_frag.append(h1p)
-    h2_frag.append(0.25 * eri[idx,idx,idx,idx])
+    h2_frag.append(eri[idx,idx,idx,idx])
 
-#print(h1_frag)
-#print(h2_frag)
+print(h1_frag)
+print(h2_frag)
 
 for frag in range(len(ncas_sub)):
     # For QPE, need second_q_ops
@@ -125,7 +129,7 @@ for frag in range(len(ncas_sub)):
             OneBodyElectronicIntegrals(ElectronicBasis.MO, (h1_frag[frag], None)),
             TwoBodyElectronicIntegrals(ElectronicBasis.MO, (h2_frag[frag], None, None, None)),
         ],
-        nuclear_repulsion_energy=mol.intor('int1e_nuc'),
+        nuclear_repulsion_energy=las.energy_nuc(),
     )
 
     # QK NOTE: under Python 3.6, pylint appears to be unable to properly identify this case of
@@ -143,7 +147,7 @@ for frag in range(len(ncas_sub)):
     # This just outputs a qubit op corresponding to a 2nd quantized op
     qubit_ops = [qubit_converter.convert(op) for op in second_q_ops]
     hamiltonian = qubit_ops[0]
-    print(hamiltonian)
+    #print(hamiltonian)
 
     # Set the backend
     quantum_instance = QuantumInstance(backend = Aer.get_backend('aer_simulator'), shots=args.shots)

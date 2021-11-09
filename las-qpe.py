@@ -46,13 +46,11 @@ mf = scf.RHF(mol).run()
 print("HF energy: ", mf.e_tot)
 
 # Create LASSCF object
-las = LASSCF(mf, (4,),(4,), spin_sub=(1,))
+las = LASSCF(mf, (2,2),(2,2), spin_sub=(1,1))
 
 # Localize the chosen fragment active spaces
-frag_atom_list = ((0,1,2,3),)
+frag_atom_list = ((0,1),(2,3))
 loc_mo_coeff = las.localize_init_guess(frag_atom_list, mf.mo_coeff)
-las.kernel(loc_mo_coeff)
-print("LASSCF energy: ", las.e_tot)
 
 ncore = las.ncore
 ncas = las.ncas
@@ -73,12 +71,12 @@ for i, sub in enumerate(ncas_sub):
 # with h1' = h1_{k1}^{k2} + \sum_i h2_{k2 i}^{k1 i} + \sum{L \neq K} h2_{k2 l2}^{k1 l1} D_{l2}^{l1}
 
 # First, construct D and ints
-D = mf.make_rdm1(mo_coeff=las.mo_coeff)
+D = mf.make_rdm1(mo_coeff=loc_mo_coeff)
 
 hcore_ao = mol.intor_symmetric('int1e_kin') + mol.intor_symmetric('int1e_nuc')
-hcore_mo = np.einsum('pi,pq,qj->ij', las.mo_coeff, hcore_ao, las.mo_coeff)
+hcore_mo = np.einsum('pi,pq,qj->ij', loc_mo_coeff, hcore_ao, loc_mo_coeff)
 
-eri_4fold = ao2mo.kernel(mol.intor('int2e'), mo_coeffs=las.mo_coeff)
+eri_4fold = ao2mo.kernel(mol.intor('int2e'), mo_coeffs=loc_mo_coeff)
 eri = ao2mo.restore(1, eri_4fold,mol.nao_nr())
 
 # Storing each fragment's h1 and h2 as a list
@@ -147,7 +145,7 @@ for frag in range(len(ncas_sub)):
     # This just outputs a qubit op corresponding to a 2nd quantized op
     qubit_ops = [qubit_converter.convert(op) for op in second_q_ops]
     hamiltonian = qubit_ops[0]
-    #print(hamiltonian)
+    print(hamiltonian)
 
     # Set the backend
     quantum_instance = QuantumInstance(backend = Aer.get_backend('aer_simulator'), shots=args.shots)
@@ -200,3 +198,6 @@ for frag in range(len(ncas_sub)):
     print(res)
     scaled_phases = pe_scale.scale_phases(res.filter_phases(cutoff=0.0,as_float=True))
     print(scaled_phases)
+
+las.kernel(loc_mo_coeff)
+print("LASSCF energy: ", las.e_tot)

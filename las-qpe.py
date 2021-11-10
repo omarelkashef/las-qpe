@@ -51,8 +51,8 @@ las = LASSCF(mf, (2,2),(2,2), spin_sub=(1,1))
 # Localize the chosen fragment active spaces
 frag_atom_list = ((0,1),(2,3))
 loc_mo_coeff = las.localize_init_guess(frag_atom_list, mf.mo_coeff)
-las.kernel(loc_mo_coeff)
-print("LASSCF energy: ", las.e_tot)
+#las.kernel(loc_mo_coeff)
+#print("LASSCF energy: ", las.e_tot)
 
 ncore = las.ncore * 2
 ncas = las.ncas * 2
@@ -74,18 +74,19 @@ for i, sub in enumerate(ncas_sub):
 
 # First, construct D and ints
 D = mf.make_rdm1(mo_coeff=mf.mo_coeff, mo_occ=np.asarray([1,1,0,0]))
-D_mo = np.einsum('pi,pq,qj->ij', las.mo_coeff, D, las.mo_coeff)
+D_mo = np.einsum('pi,pq,qj->ij', loc_mo_coeff, D, loc_mo_coeff)
+# Convert to spin orbitals
 D_so = np.repeat(D_mo, 2, axis=0)
 D_so = np.repeat(D_so, 2, axis=1)
 print("D:\n",D_so)
 
 hcore_ao = mf.get_hcore(mol)
-hcore_mo = np.einsum('pi,pq,qj->ij', las.mo_coeff, hcore_ao, las.mo_coeff)
+hcore_mo = np.einsum('pi,pq,qj->ij', loc_mo_coeff, hcore_ao, loc_mo_coeff)
 # Convert to spin orbitals
 hcore_so = np.repeat(hcore_mo, 2, axis=0)
 hcore_so = np.repeat(hcore_so, 2, axis=1)
 
-eri_4fold = ao2mo.kernel(mol.intor('int2e'), mo_coeffs=las.mo_coeff)
+eri_4fold = ao2mo.kernel(mol.intor('int2e'), mo_coeffs=loc_mo_coeff)
 eri = ao2mo.restore(1, eri_4fold,mol.nao_nr())
 # Convert to spin orbitals
 eri_so = np.repeat(eri, 2, axis=0)

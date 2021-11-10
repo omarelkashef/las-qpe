@@ -73,10 +73,11 @@ for i, sub in enumerate(ncas_sub):
 # with h1' = h1_{k1}^{k2} + \sum_i h2_{k2 i}^{k1 i} + \sum{L \neq K} h2_{k2 l2}^{k1 l1} D_{l2}^{l1}
 
 # First, construct D and ints
-D = mf.make_rdm1(mo_coeff=las.mo_coeff)
-D_so = np.repeat(D, 2, axis=0)
+D = mf.make_rdm1(mo_coeff=mf.mo_coeff, mo_occ=np.asarray([1,1,0,0]))
+D_mo = np.einsum('pi,pq,qj->ij', las.mo_coeff, D, las.mo_coeff)
+D_so = np.repeat(D_mo, 2, axis=0)
 D_so = np.repeat(D_so, 2, axis=1)
-print("D:\n",D)
+print("D:\n",D_so)
 
 hcore_ao = mf.get_hcore(mol)
 hcore_mo = np.einsum('pi,pq,qj->ij', las.mo_coeff, hcore_ao, las.mo_coeff)
@@ -113,15 +114,11 @@ for idx in idx_list[1:]:
         h1p += np.einsum('jkii->jk', eri_mix[idx,idx,:,:])
         for i,idx2 in enumerate(idx_list):
             if i > 0 and idx2 != idx:
-                print("ERI:\n", eri_so[idx,idx,idx2,idx2])
-                print("D:\n", D_so[idx2,idx2])
-                print("h1p before:\n", h1p)
                 h1p += np.einsum('ijkl,kl->ij', eri_so[idx,idx,idx2,idx2],D_so[idx2,idx2])
-                print("h1p after:\n", h1p)
 
     # Finally, construct total H_frag
     h1_frag.append(h1p)
-    h2_frag.append(eri[idx,idx,idx,idx])
+    h2_frag.append(0.25 * eri_so[idx,idx,idx,idx])
 
 print("Hcore:\n", hcore_mo)
 print("H1_frag:\n", h1_frag)
@@ -130,7 +127,6 @@ for f in range(len(ncas_sub)):
     print("H1_frag shape: ", h1_frag[f].shape)
     print("H2_frag shape: ", h2_frag[f].shape)
 
-exit()
 
 # Function below stolen from qiskit's Hamiltonian Phase Estimation class
 def _remove_identity(pauli_sum):
@@ -160,11 +156,17 @@ for frag in range(len(ncas_sub)):
         num_particles=(num_alpha, num_beta),
     )
 
-    # Assuming an RHF reference for now, so h1_b, h2_ab, h2_bb are None
+    # Assuming an RHF reference for now, so h1_b, h2_ab, h2_bb are created using 
+    # the corresponding spots from h1_frag and just the aaaa term from h2_frag
+    h1_a = h1_frag[frag][::2,::2]
+    h1_b = h1_frag[frag][1::2,1::2]
+    h2_aa = h2_frag[frag][::2,::2,::2,::2]
+    print("H1 a:\n", h1_a)
+    print("H1 b:\n", h1_b)
     electronic_energy = ElectronicEnergy(
         [
-            OneBodyElectronicIntegrals(ElectronicBasis.MO, (h1_frag[frag], None)),
-            TwoBodyElectronicIntegrals(ElectronicBasis.MO, (h2_frag[frag], None, None, None)),
+            OneBodyElectronicIntegrals(ElectronicBasis.MO, (h1_a, h1_b)),
+            TwoBodyElectronicIntegrals(ElectronicBasis.MO, (h2_aa, h2_aa, h2_aa, None)),
         ],
         nuclear_repulsion_energy=las.energy_nuc(),
     )

@@ -47,9 +47,12 @@ print("HF energy: ", mf.e_tot)
 
 # Create LASSCF object
 las = LASSCF(mf, (2,2),(2,2), spin_sub=(1,1))
+#las = LASSCF(mf, (4,),(4,), spin_sub=(1,))
 
 # Localize the chosen fragment active spaces
 frag_atom_list = ((0,1),(2,3))
+#frag_atom_list = ((0,1,2,3),)
+print(len(las.ncas_sub))
 loc_mo_coeff = las.localize_init_guess(frag_atom_list, mf.mo_coeff)
 #las.kernel(loc_mo_coeff)
 #print("LASSCF energy: ", las.e_tot)
@@ -57,8 +60,9 @@ loc_mo_coeff = las.localize_init_guess(frag_atom_list, mf.mo_coeff)
 ncore = las.ncore * 2
 ncas = las.ncas * 2
 ncas_sub = las.ncas_sub *2
+nelec_cas = las.nelecas
 
-print ("Ncore: ",las.ncore, "Ncas: ",las.ncas, "Ncas_sub", las.ncas_sub)
+print ("Ncore: ", ncore, "Ncas: ", ncas, "Ncas_sub: ", ncas_sub, "Nelec_cas: ", nelec_cas)
 
 # Situation so far: we have mf.mo_coeffs containing [:,ncore:nsub1:nsub2:next]
 # Creating a list of slices for core, subspace1, subspace2, etc
@@ -73,7 +77,7 @@ for i, sub in enumerate(ncas_sub):
 # with h1' = h1_{k1}^{k2} + \sum_i h2_{k2 i}^{k1 i} + \sum{L \neq K} h2_{k2 l2}^{k1 l1} D_{l2}^{l1}
 
 # First, construct D and ints
-D = mf.make_rdm1(mo_coeff=mf.mo_coeff, mo_occ=np.asarray([1,1,0,0]))
+D = mf.make_rdm1(mo_coeff=mf.mo_coeff)
 D_mo = np.einsum('pi,pq,qj->ij', loc_mo_coeff, D, loc_mo_coeff)
 # Convert to spin orbitals
 D_so = np.repeat(D_mo, 2, axis=0)
@@ -93,8 +97,10 @@ eri_so = np.repeat(eri, 2, axis=0)
 eri_so = np.repeat(eri_so, 2, axis=1)
 eri_so = np.repeat(eri_so, 2, axis=2)
 eri_so = np.repeat(eri_so, 2, axis=3)
-# Antisymmetrize
-eri_so = eri_so - np.swapaxes(eri_so, 1, 3) 
+# Antisymmetrize only the aa and bb blocks
+eri_so[::2,::2,::2,::2] = eri_so[::2,::2,::2,::2] - np.swapaxes(eri_so[::2,::2,::2,::2], 1, 3) 
+eri_so[1::2,1::2,1::2,1::2] = eri_so[1::2,1::2,1::2,1::2] - np.swapaxes(eri_so[1::2,1::2,1::2,1::2], 1, 3) 
+
 
 # Storing each fragment's h1 and h2 as a list
 h1_frag = []
@@ -110,7 +116,7 @@ for idx in idx_list[1:]:
         h1p = np.einsum('jkii->jk', eri_mix[idx,idx,:,:])
         for i,idx2 in enumerate(idx_list):
             if i > 0 and idx2 != idx:
-                h1p += np.einsum('ijkl,kl->ij', eri_so[idx,idx,idx2,idx2],D[idx2,idx2])
+                h1p += np.einsum('ijkl,kl->ij', eri_so[idx,idx,idx2,idx2],D_so[idx2,idx2])
     else:
         h1p += np.einsum('jkii->jk', eri_mix[idx,idx,:,:])
         for i,idx2 in enumerate(idx_list):
@@ -119,9 +125,9 @@ for idx in idx_list[1:]:
 
     # Finally, construct total H_frag
     h1_frag.append(h1p)
-    h2_frag.append(0.25 * eri_so[idx,idx,idx,idx])
+    h2_frag.append(eri_so[idx,idx,idx,idx])
 
-print("Hcore:\n", hcore_mo)
+print("Hcore:\n", hcore_so)
 print("H1_frag:\n", h1_frag)
 
 for f in range(len(ncas_sub)):
@@ -146,28 +152,28 @@ def _remove_identity(pauli_sum):
     return idcoeff, SummedOp(ops)
 
 for frag in range(len(ncas_sub)):
+    # WARNING: these have to be set manually for each fragment!
+    num_alpha = int(nelec_cas[0] /2)
+    num_beta = int(nelec_cas[1] /2)
+
     # For QPE, need second_q_ops
     # Hacking together an ElectronicStructureDriverResult to create second_q_ops
     # Lines below stolen from qiskit's FCIDump driver and modified
-    num_alpha = int(mol.nelec[0])
-    num_beta = int(mol.nelec[1])
-
     particle_number = ParticleNumber(
         num_spin_orbitals=ncas_sub[frag],
         num_particles=(num_alpha, num_beta),
     )
 
     # Assuming an RHF reference for now, so h1_b, h2_ab, h2_bb are created using 
-    # the corresponding spots from h1_frag and just the aaaa term from h2_frag
-    h1_a = h1_frag[frag][::2,::2]
-    h1_b = h1_frag[frag][1::2,1::2]
-    h2_aa = h2_frag[frag][::2,::2,::2,::2]
-    print("H1 a:\n", h1_a)
-    print("H1 b:\n", h1_b)
+    # the corresponding spots from h1_frag and just the aa term from h2_frag
+    print("Nuclear repulsion: ", las.energy_nuc())
     electronic_energy = ElectronicEnergy(
         [
-            OneBodyElectronicIntegrals(ElectronicBasis.MO, (h1_a, h1_b)),
-            TwoBodyElectronicIntegrals(ElectronicBasis.MO, (h2_aa, h2_aa, h2_aa, None)),
+            # The SO basis gives an incorrect H for a single fragment
+            #OneBodyElectronicIntegrals(ElectronicBasis.SO, h1_frag[frag]),
+            #TwoBodyElectronicIntegrals(ElectronicBasis.SO, h2_frag[frag]),
+            OneBodyElectronicIntegrals(ElectronicBasis.MO, (h1_frag[frag][::2,::2],h1_frag[frag][1::2,1::2])),
+            TwoBodyElectronicIntegrals(ElectronicBasis.MO, (h2_frag[frag][::2,::2,::2,::2], h2_frag[frag][::2,::2,1::2,1::2],h2_frag[frag][1::2,1::2,1::2,1::2], None)),
         ],
         nuclear_repulsion_energy=las.energy_nuc(),
     )
@@ -187,7 +193,7 @@ for frag in range(len(ncas_sub)):
     # This just outputs a qubit op corresponding to a 2nd quantized op
     qubit_ops = [qubit_converter.convert(op) for op in second_q_ops]
     hamiltonian = qubit_ops[0]
-    print(hamiltonian)
+    #print(hamiltonian)
 
     # Set the backend
     quantum_instance = QuantumInstance(backend = Aer.get_backend('aer_simulator'), shots=args.shots)
@@ -210,6 +216,7 @@ for frag in range(len(ncas_sub)):
         id_coefficient, hamiltonian_no_id = _remove_identity(hamiltonian)
     else:
         raise TypeError("Hamiltonian must be PauliSumOp, PauliOp or SummedOp.")
+
     pe_scale = PhaseEstimationScale.from_pauli_sum(hamiltonian_no_id)
 
     # QK: scale so that phase does not wrap.

@@ -1,10 +1,12 @@
 import numpy as np
+import logging
 from argparse import ArgumentParser
 # PySCF imports
 from pyscf import gto, scf, lib, mcscf, ao2mo
 from pyscf.tools import fcidump
 # mrh imports
 from mrh.my_pyscf.mcscf.lasscf_o0 import LASSCF
+from mrh.my_pyscf.mcscf.lasci import h1e_for_cas
 
 # Qiskit imports
 from qiskit_nature.properties.second_quantization.electronic import (
@@ -37,7 +39,7 @@ args = parser.parse_args()
 xyz = '''H 0.0 0.0 0.0
          H 1.0 0.0 0.0
          H 0.2 3.9 0.1
-         H 1.159166 4.1 -0.1'''
+        H 1.159166 4.1 -0.1'''
 mol = gto.M (atom = xyz, basis = 'sto-3g', output='h4_sto3g.log',
     symmetry=False, verbose=lib.logger.DEBUG)
 
@@ -46,16 +48,20 @@ mf = scf.RHF(mol).run()
 print("HF energy: ", mf.e_tot)
 
 # Create LASSCF object
+#las = LASSCF(mf, (2,),(2,), spin_sub=(1,))
+#las = LASSCF(mf, (1,1),(1,1), spin_sub=(2,2))
 las = LASSCF(mf, (2,2),(2,2), spin_sub=(1,1))
 #las = LASSCF(mf, (4,),(4,), spin_sub=(1,))
 
 # Localize the chosen fragment active spaces
+#frag_atom_list = ((0,1),)
+#frag_atom_list = ((0,),(1,))
 frag_atom_list = ((0,1),(2,3))
 #frag_atom_list = ((0,1,2,3),)
 loc_mo_coeff = las.localize_init_guess(frag_atom_list, mf.mo_coeff)
 las.kernel(loc_mo_coeff)
 loc_mo_coeff = las.mo_coeff
-#print("LASSCF energy: ", las.e_tot)
+print("LASSCF energy: ", las.e_tot)
 #loc_mo_coeff = mf.mo_coeff
 
 ncore = las.ncore
@@ -84,7 +90,7 @@ D = mf.make_rdm1(mo_coeff=mf.mo_coeff)
 D_mo = np.einsum('pi,pq,qj->ij', loc_mo_coeff, D, loc_mo_coeff)
 '''
 # Option 2: Converged LAS 1-RDM
-D_mo = las.make_rdm1s(mo_coeff=las.mo_coeff)[0]
+D_mo = las.make_rdm1(mo_coeff=las.mo_coeff)
 # Convert to spin orbitals
 D_so = np.block([[D_mo, np.zeros_like(D_mo)],[np.zeros_like(D_mo), D_mo]])
 #print("D:\n",D_so)
@@ -120,7 +126,7 @@ h2_frag = []
 # Then construct h1' for each fragment
 # and for alpha-alpha, beta-beta blocks
 for idx in idx_list[1:]:
-    print(idx)
+    print(idx_list[0])
     inactive_mask = idx_list[0]
     eri_mix = eri_so[:,inactive_mask,:,inactive_mask].copy()
     print(eri_mix.shape)
@@ -140,14 +146,18 @@ for idx in idx_list[1:]:
     h1_frag.append(h1p)
     h2_frag.append(eri[idx,idx,idx,idx])
 
-print("H1p is hcore: ", np.allclose(h1p, hcore_so[idx,idx]))
-#print("H2_frag:\n", h2_frag[0][0][0])
+# using the built-in LASCI function h1e_for_cas
+h1_frag_2 = h1e_for_cas(las)
 
+# Just using h1e_for_cas as my fragment h1
+h1_frag = []
+for f in range(len(ncas_sub)):
+    h1_frag.append(h1_frag_2[f][0][0])
+print("h1e: {}".format(h1_frag))
 
 for f in range(len(ncas_sub)):
     print("H1_frag shape: ", h1_frag[f].shape)
     print("H2_frag shape: ", h2_frag[f].shape)
-
 
 # Function below stolen from qiskit's Hamiltonian Phase Estimation class
 def _remove_identity(pauli_sum):
@@ -164,6 +174,10 @@ def _remove_identity(pauli_sum):
             idcoeff += op.coeff
 
     return idcoeff, SummedOp(ops)
+
+phases_list = []
+en_list = []
+total_op_list = []
 
 for frag in range(len(ncas_sub)):
     # WARNING: these have to be set manually for each fragment!
@@ -199,6 +213,8 @@ for frag in range(len(ncas_sub)):
     driver_result.add_property(particle_number)
 
     second_q_ops = driver_result.second_q_ops()
+    second_q_ops[0].set_truncation(0)
+    #print(second_q_ops[0])
 
     # Choose fermion-to-qubit mapping
     qubit_converter = QubitConverter(mapper = ParityMapper(), two_qubit_reduction=True)
@@ -208,12 +224,11 @@ for frag in range(len(ncas_sub)):
     #print(hamiltonian)
 
     # Set the backend
-    quantum_instance = QuantumInstance(backend = Aer.get_backend('aer_simulator'), shots=args.shots)
+    quantum_instance = QuantumInstance(backend = Aer.get_backend('aer_simulator'), shots=args.shots, optimization_level=0)
 
     np_solver = NumPyEigensolver(k=1)
     ed_result = np_solver.compute_eigenvalues(hamiltonian)
     print("NumPy result: ", ed_result.eigenvalues)
-    continue
 
     # Can choose a regular solver from qiskit.algorithms
     qpe_solver = PhaseEstimation(num_evaluation_qubits=args.an, quantum_instance=quantum_instance)
@@ -225,13 +240,10 @@ for frag in range(len(ncas_sub)):
     elif isinstance(hamiltonian, PauliOp):
         hamiltonian = SummedOp([hamiltonian])
 
-    '''
     if isinstance(hamiltonian, SummedOp):
         id_coefficient, hamiltonian_no_id = _remove_identity(hamiltonian)
     else:
         raise TypeError("Hamiltonian must be PauliSumOp, PauliOp or SummedOp.")
-    '''
-    hamiltonian_no_id = hamiltonian
 
     pe_scale = PhaseEstimationScale.from_pauli_sum(hamiltonian_no_id)
 
@@ -261,14 +273,32 @@ for frag in range(len(ncas_sub)):
     # For our (H2)_2 system 8 spin orbs, 2 alpha 2 beta electrons
     init_state = HartreeFock(ncas_sub[frag]*2, (num_alpha,num_beta), qubit_converter)
 
+    circuit = qpe_solver.construct_circuit(unitary=unitary, state_preparation=init_state).decompose().decompose()
+
+    op_dict = circuit.count_ops()
+    total_ops = sum(op_dict.values())
+    total_op_list.append(total_ops)
+    print("Operations: {}".format(op_dict))
+    print("Total operations: {}".format(total_ops))
+    print("Nonlocal gates: {}".format(circuit.num_nonlocal_gates()))
+
     # Estimate takes in a SummedPauli or a PauliOp and outputs a scaled estimate of the eigenvalue
     res = qpe_solver.estimate(unitary=unitary, state_preparation=init_state)
-
+    phases = res.__dict__['_phases']
+    phases_list.append(phases)
     print(res)
     scaled_phases = pe_scale.scale_phases(res.filter_phases(cutoff=0.0, as_float=True), id_coefficient=0.0)
+    scaled_phases = {v:k for k, v in scaled_phases.items()}
     print(scaled_phases)
-    max_eig = max(-1.0 * k for k, v in scaled_phases.items())
-    print("Max negative eigenvalue: ",max_eig)
-    most_likely = max(scaled_phases, key=scaled_phases.get)
-    print("Most likely eigenvalue: ", most_likely)
+    energy_dict = {k:scaled_phases[v] for k, v in phases.items()}
+    en_list.append(energy_dict)
+    most_likely_eig = scaled_phases[max(scaled_phases.keys())]
+    most_likely_an = max(phases, key=phases.get)
+    print("Most likely eigenvalue: ", most_likely_eig)
+    print("Most likely ancilla sign: ", most_likely_an)
+
+np.save('results_{}_{}.npy'.format(args.an, args.shots), {'n_frag':len(ncas_sub), 'phases':phases_list, 'energies':en_list, 'operations':total_op_list})
+print("Phases: ",phases_list)
+print("en_list: ",en_list)
+print("total_op_list: ",total_op_list)
 

@@ -46,12 +46,12 @@ mf = scf.RHF(mol).run()
 print("HF energy: ", mf.e_tot)
 
 # Create LASSCF object
-#las = LASSCF(mf, (2,2),(2,2), spin_sub=(1,1))
-las = LASSCF(mf, (4,),(4,), spin_sub=(1,))
+las = LASSCF(mf, (2,2),(2,2), spin_sub=(1,1))
+#las = LASSCF(mf, (4,),(4,), spin_sub=(1,))
 
 # Localize the chosen fragment active spaces
-#frag_atom_list = ((0,1),(2,3))
-frag_atom_list = ((0,1,2,3),)
+frag_atom_list = ((0,1),(2,3))
+#frag_atom_list = ((0,1,2,3),)
 print(len(las.ncas_sub))
 loc_mo_coeff = las.localize_init_guess(frag_atom_list, mf.mo_coeff)
 las.kernel(loc_mo_coeff)
@@ -172,8 +172,8 @@ def _remove_identity(pauli_sum):
 
 for frag in range(len(ncas_sub)):
     # WARNING: these have to be set manually for each fragment!
-    num_alpha = int(nelec_cas[0])#   / 2)
-    num_beta = int(nelec_cas[1])#   / 2)
+    num_alpha = int(nelec_cas[0] / 2)
+    num_beta = int(nelec_cas[1] / 2)
 
     # For QPE, need second_q_ops
     # Hacking together an ElectronicStructureDriverResult to create second_q_ops

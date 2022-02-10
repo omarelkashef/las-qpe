@@ -1,0 +1,50 @@
+pyscf plugins found in 
+/Users/ruheedcunha/Documents/mrh/pyscf
+When PYTHONPATH is set, it is recommended to load these plugins through the environment variable PYSCF_EXT_PATHoutput file: h4_sto3g_2_10240.log
+HF energy:  -2.132195003918479
+LASSCF energy:  -2.2022821838641433
+Ncore:  0 Ncas:  4 Ncas_sub:  [2 2] Nelec_cas:  (2, 2)
+slice(0, 0, None)
+(8, 0, 8, 0)
+slice(0, 0, None)
+(8, 0, 8, 0)
+h1e: [array([[-1.11046879e+00, -4.96936511e-05],
+       [-4.96936511e-05, -5.88772126e-01]]), array([[-1.11038887e+00, -3.18841699e-05],
+       [-3.18841699e-05, -5.88690320e-01]])]
+H1_frag shape:  (2, 2)
+H2_frag shape:  (2, 2, 2, 2)
+H1_frag shape:  (2, 2)
+H2_frag shape:  (2, 2, 2, 2)
+Nuclear repulsion:  1.5797927167239267
+NumPy result:  [-1.62957716+6.22240703e-18j]
+Operations: OrderedDict([('ccx', 234), ('cu', 114), ('cp', 73), ('u2', 2), ('u', 2), ('p', 2), ('h', 2)])
+Total operations: 429
+Nonlocal gates: 421
+{   'circuit_result': Result(backend_name='aer_simulator', backend_version='0.9.1', qobj_id='5240b7ba-bca9-416e-9eed-c6522c68c861', job_id='27749112-bbf9-4a17-bc44-f968d1db0c2a', success=True, results=[ExperimentResult(shots=10240, success=True, meas_level=2, data=ExperimentResultData(counts={'0x1': 49, '0x2': 190, '0x0': 237, '0x3': 9764}), header=QobjExperimentHeader(clbit_labels=[['meas', 0], ['meas', 1]], creg_sizes=[['meas', 2]], global_phase=0.0, memory_slots=2, metadata=None, n_qubits=6, name='QPE', qreg_sizes=[['eval', 2], ['q', 4]], qubit_labels=[['eval', 0], ['eval', 1], ['q', 0], ['q', 1], ['q', 2], ['q', 3]]), status=DONE, seed_simulator=1394558359, metadata={'parallel_state_update': 8, 'noise': 'ideal', 'remapped_qubits': False, 'parallel_shots': 1, 'device': 'CPU', 'active_input_qubits': [0, 1, 2, 3, 4, 5], 'measure_sampling': True, 'num_clbits': 2, 'input_qubit_map': [[0, 0], [1, 1], [2, 2], [3, 3], [4, 4], [5, 5]], 'num_qubits': 6, 'method': 'statevector', 'fusion': {'applied': False, 'max_fused_qubits': 5, 'threshold': 14, 'enabled': True}}, time_taken=0.015802887)], date=2021-12-05T13:03:26.894490, status=COMPLETED, status=QobjHeader(backend_name='aer_simulator', backend_version='0.9.1'), metadata={'mpi_rank': 0, 'time_taken': 0.018169551000000003, 'max_gpu_memory_mb': 0, 'max_memory_mb': 16384, 'parallel_experiments': 1, 'num_mpi_processes': 1, 'omp_enabled': True}, time_taken=0.018853187561035156),
+    'most_likely_phase': 0.75,
+    'phase': 0.75,
+    'phases': {   '00': 0.02314453125,
+                  '01': 0.0185546875,
+                  '10': 0.00478515625,
+                  '11': 0.953515625}}
+{0.02314453125: -0.8560600124446723, 0.0185546875: -0.06847675101926509, 0.00478515625: 0.7191065104061422, 0.953515625: -1.6436432738700795}
+Most likely eigenvalue:  -1.6436432738700795
+Most likely ancilla sign:  11
+Nuclear repulsion:  1.5797927167239267
+NumPy result:  [-1.62941649-7.60435236e-17j]
+Operations: OrderedDict([('ccx', 234), ('cu', 114), ('cp', 73), ('u2', 2), ('u', 2), ('p', 2), ('h', 2)])
+Total operations: 429
+Nonlocal gates: 421
+{   'circuit_result': Result(backend_name='aer_simulator', backend_version='0.9.1', qobj_id='ee8fc873-a419-4fd5-a7f1-45ac9429b950', job_id='6b7b9d51-3cfb-4915-9293-f4f9e1e53272', success=True, results=[ExperimentResult(shots=10240, success=True, meas_level=2, data=ExperimentResultData(counts={'0x1': 68, '0x2': 176, '0x0': 245, '0x3': 9751}), header=QobjExperimentHeader(clbit_labels=[['meas', 0], ['meas', 1]], creg_sizes=[['meas', 2]], global_phase=0.0, memory_slots=2, metadata=None, n_qubits=6, name='QPE', qreg_sizes=[['eval', 2], ['q', 4]], qubit_labels=[['eval', 0], ['eval', 1], ['q', 0], ['q', 1], ['q', 2], ['q', 3]]), status=DONE, seed_simulator=3881408599, metadata={'parallel_state_update': 8, 'noise': 'ideal', 'remapped_qubits': False, 'parallel_shots': 1, 'device': 'CPU', 'active_input_qubits': [0, 1, 2, 3, 4, 5], 'measure_sampling': True, 'num_clbits': 2, 'input_qubit_map': [[0, 0], [1, 1], [2, 2], [3, 3], [4, 4], [5, 5]], 'num_qubits': 6, 'method': 'statevector', 'fusion': {'applied': False, 'max_fused_qubits': 5, 'threshold': 14, 'enabled': True}}, time_taken=0.013527397)], date=2021-12-05T13:03:27.399707, status=COMPLETED, status=QobjHeader(backend_name='aer_simulator', backend_version='0.9.1'), metadata={'mpi_rank': 0, 'time_taken': 0.014774853000000001, 'max_gpu_memory_mb': 0, 'max_memory_mb': 16384, 'parallel_experiments': 1, 'num_mpi_processes': 1, 'omp_enabled': True}, time_taken=0.015277862548828125),
+    'most_likely_phase': 0.75,
+    'phase': 0.75,
+    'phases': {   '00': 0.02392578125,
+                  '01': 0.0171875,
+                  '10': 0.006640625,
+                  '11': 0.95224609375}}
+{0.02392578125: -0.8558975542334869, 0.0171875: -0.0683402476650492, 0.006640625: 0.7192170589033885, 0.95224609375: -1.6434548608019246}
+Most likely eigenvalue:  -1.6434548608019246
+Most likely ancilla sign:  11
+Phases:  [{'00': 0.02314453125, '01': 0.0185546875, '10': 0.00478515625, '11': 0.953515625}, {'00': 0.02392578125, '01': 0.0171875, '10': 0.006640625, '11': 0.95224609375}]
+en_list:  [{'00': -0.8560600124446723, '01': -0.06847675101926509, '10': 0.7191065104061422, '11': -1.6436432738700795}, {'00': -0.8558975542334869, '01': -0.0683402476650492, '10': 0.7192170589033885, '11': -1.6434548608019246}]
+total_op_list:  [429, 429]

@@ -1,0 +1,44 @@
+pyscf plugins found in 
+/Users/ruheedcunha/Documents/mrh/pyscf
+When PYTHONPATH is set, it is recommended to load these plugins through the environment variable PYSCF_EXT_PATHoverwrite output file: h4_sto3g_1_8192.log
+HF energy:  -2.132195003918479
+LASSCF energy:  -2.2022821838641433
+Ncore:  0 Ncas:  4 Ncas_sub:  [2 2] Nelec_cas:  (2, 2)
+slice(0, 0, None)
+(8, 0, 8, 0)
+slice(0, 0, None)
+(8, 0, 8, 0)
+h1e: [array([[-1.11046879e+00, -4.96936511e-05],
+       [-4.96936511e-05, -5.88772126e-01]]), array([[-1.11038887e+00, -3.18841699e-05],
+       [-3.18841699e-05, -5.88690320e-01]])]
+H1_frag shape:  (2, 2)
+H2_frag shape:  (2, 2, 2, 2)
+H1_frag shape:  (2, 2)
+H2_frag shape:  (2, 2, 2, 2)
+Nuclear repulsion:  1.5797927167239267
+NumPy result:  [-1.62957716+6.22240703e-18j]
+Operations: OrderedDict([('ccx', 78), ('cu', 38), ('cp', 24), ('u', 2), ('u2', 1), ('p', 1), ('h', 1)])
+Total operations: 145
+Nonlocal gates: 140
+{   'circuit_result': Result(backend_name='aer_simulator', backend_version='0.9.1', qobj_id='ce789721-a9a6-4a6a-b93c-b6c10bcf6dd7', job_id='0edfb7fb-e358-4386-8bc5-ad59cdc64ab8', success=True, results=[ExperimentResult(shots=8192, success=True, meas_level=2, data=ExperimentResultData(counts={'0x0': 4455, '0x1': 3737}), header=QobjExperimentHeader(clbit_labels=[['meas', 0]], creg_sizes=[['meas', 1]], global_phase=0.0, memory_slots=1, metadata=None, n_qubits=5, name='QPE', qreg_sizes=[['eval', 1], ['q', 4]], qubit_labels=[['eval', 0], ['q', 0], ['q', 1], ['q', 2], ['q', 3]]), status=DONE, seed_simulator=1572567962, metadata={'parallel_state_update': 8, 'noise': 'ideal', 'remapped_qubits': False, 'parallel_shots': 1, 'device': 'CPU', 'active_input_qubits': [0, 1, 2, 3, 4], 'measure_sampling': True, 'num_clbits': 1, 'input_qubit_map': [[0, 0], [1, 1], [2, 2], [3, 3], [4, 4]], 'num_qubits': 5, 'method': 'statevector', 'fusion': {'applied': False, 'max_fused_qubits': 5, 'threshold': 14, 'enabled': True}}, time_taken=0.010215079)], date=2021-12-05T12:49:16.205240, status=COMPLETED, status=QobjHeader(backend_name='aer_simulator', backend_version='0.9.1'), metadata={'mpi_rank': 0, 'time_taken': 0.011943332000000001, 'max_gpu_memory_mb': 0, 'max_memory_mb': 16384, 'parallel_experiments': 1, 'num_mpi_processes': 1, 'omp_enabled': True}, time_taken=0.012639999389648438),
+    'most_likely_phase': 0.0,
+    'phase': 0.0,
+    'phases': {'0': 0.5438232421875, '1': 0.4561767578125}}
+{0.5438232421875: -0.8560600124446723, 0.4561767578125: 0.7191065104061422}
+Most likely eigenvalue:  -0.8560600124446723
+Most likely ancilla sign:  0
+Nuclear repulsion:  1.5797927167239267
+NumPy result:  [-1.62941649-7.60435236e-17j]
+Operations: OrderedDict([('ccx', 78), ('cu', 38), ('cp', 24), ('u', 2), ('u2', 1), ('p', 1), ('h', 1)])
+Total operations: 145
+Nonlocal gates: 140
+{   'circuit_result': Result(backend_name='aer_simulator', backend_version='0.9.1', qobj_id='94a2655a-5bc5-4f2b-8cb8-1ba03e0ea108', job_id='ea5e3c2a-02d0-42d2-a7ee-b7e1d713cf3d', success=True, results=[ExperimentResult(shots=8192, success=True, meas_level=2, data=ExperimentResultData(counts={'0x1': 3707, '0x0': 4485}), header=QobjExperimentHeader(clbit_labels=[['meas', 0]], creg_sizes=[['meas', 1]], global_phase=0.0, memory_slots=1, metadata=None, n_qubits=5, name='QPE', qreg_sizes=[['eval', 1], ['q', 4]], qubit_labels=[['eval', 0], ['q', 0], ['q', 1], ['q', 2], ['q', 3]]), status=DONE, seed_simulator=439146168, metadata={'parallel_state_update': 8, 'noise': 'ideal', 'remapped_qubits': False, 'parallel_shots': 1, 'device': 'CPU', 'active_input_qubits': [0, 1, 2, 3, 4], 'measure_sampling': True, 'num_clbits': 1, 'input_qubit_map': [[0, 0], [1, 1], [2, 2], [3, 3], [4, 4]], 'num_qubits': 5, 'method': 'statevector', 'fusion': {'applied': False, 'max_fused_qubits': 5, 'threshold': 14, 'enabled': True}}, time_taken=0.010432439)], date=2021-12-05T12:49:16.466035, status=COMPLETED, status=QobjHeader(backend_name='aer_simulator', backend_version='0.9.1'), metadata={'mpi_rank': 0, 'time_taken': 0.011033171000000001, 'max_gpu_memory_mb': 0, 'max_memory_mb': 16384, 'parallel_experiments': 1, 'num_mpi_processes': 1, 'omp_enabled': True}, time_taken=0.011543989181518555),
+    'most_likely_phase': 0.0,
+    'phase': 0.0,
+    'phases': {'0': 0.5474853515625, '1': 0.4525146484375}}
+{0.5474853515625: -0.8558975542334869, 0.4525146484375: 0.7192170589033885}
+Most likely eigenvalue:  -0.8558975542334869
+Most likely ancilla sign:  0
+Phases:  [{'0': 0.5438232421875, '1': 0.4561767578125}, {'0': 0.5474853515625, '1': 0.4525146484375}]
+en_list:  [{'0': -0.8560600124446723, '1': 0.7191065104061422}, {'0': -0.8558975542334869, '1': 0.7192170589033885}]
+total_op_list:  [145, 145]

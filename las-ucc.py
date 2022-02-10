@@ -1,3 +1,9 @@
+#########################
+# Script to run LASSCF, use the converged fragment Hamiltonians to set up
+# fragment wavefunctions using QPE, then load and run a VQE using the UCCSD
+# ansatz on the whole system
+#########################
+
 import numpy as np
 import logging
 from argparse import ArgumentParser
@@ -38,7 +44,7 @@ from qiskit.algorithms.optimizers import L_BFGS_B
 from qiskit.algorithms.phase_estimators import PhaseEstimationResult
 from qiskit.opflow import PauliTrotterEvolution,SummedOp,PauliOp,MatrixOp,PauliSumOp,StateFn
 
-parser = ArgumentParser(description='Do QPE with a LAS reference')
+parser = ArgumentParser(description='Do LAS-UCC, specifying num of ancillas and shots')
 parser.add_argument('--an', type=int, default=1, help='number of ancilla qubits')
 parser.add_argument('--shots', type=int, default=1024, help='number of shots for the simulator')
 args = parser.parse_args()
@@ -74,10 +80,10 @@ las = LASSCF(mf, (2,2),(2,2), spin_sub=(1,1))
 frag_atom_list = ((0,1),(2,3))
 #frag_atom_list = ((0,1,2,3),)
 loc_mo_coeff = las.localize_init_guess(frag_atom_list, mf.mo_coeff)
+# Run LASSCF
 las.kernel(loc_mo_coeff)
 loc_mo_coeff = las.mo_coeff
 print("LASSCF energy: ", las.e_tot)
-#loc_mo_coeff = mf.mo_coeff
 
 ncore = las.ncore
 ncas = las.ncas
@@ -86,7 +92,7 @@ nelec_cas = las.nelecas
 
 print ("Ncore: ", ncore, "Ncas: ", ncas, "Ncas_sub: ", ncas_sub, "Nelec_cas: ", nelec_cas)
 
-# Situation so far: we have mf.mo_coeffs containing [:,ncore:nsub1:nsub2:next]
+# Situation so far: we have loc_mo_coeff containing [:,ncore:nsub1:nsub2:next]
 # Creating a list of slices for core, subspace1, subspace2, etc
 idx_list = [slice(0,ncore)]
 prev_sub_size = 0
@@ -108,7 +114,6 @@ D_mo = np.einsum('pi,pq,qj->ij', loc_mo_coeff, D, loc_mo_coeff)
 D_mo = las.make_rdm1(mo_coeff=las.mo_coeff)
 # Convert to spin orbitals
 D_so = np.block([[D_mo, np.zeros_like(D_mo)],[np.zeros_like(D_mo), D_mo]])
-#print("D:\n",D_so)
 
 hcore_ao = mf.get_hcore(mol)
 hcore_mo = np.einsum('pi,pq,qj->ij', loc_mo_coeff, hcore_ao, loc_mo_coeff)
@@ -118,21 +123,6 @@ hcore_so = np.block([[hcore_mo, np.zeros_like(hcore_mo)],[np.zeros_like(hcore_mo
 nso = mol.nao_nr() * 2
 eri_4fold = ao2mo.kernel(mol.intor('int2e'), mo_coeffs=loc_mo_coeff)
 eri = ao2mo.restore(1, eri_4fold,mol.nao_nr())
-#print(eri[0])
-# Convert to spin orbitals
-eri_so = np.zeros((nso, nso, nso, nso))
-one_indices = (
-            (0, 0, 0, 0),  # alpha-alpha-spin
-            (0, 1, 1, 0),  # beta-alpha-spin
-            (1, 1, 1, 1),  # beta-beta-spin
-            (1, 0, 0, 1),  # alpha-beta-spin
-        )
-for one_idx in one_indices: 
-    ao_mat = np.einsum('ijkl->ljik', eri)  # physicist notation
-    kron = np.zeros((2,2,2,2))
-    kron[one_idx] = 1
-    eri_so -= 0.5 * np.kron(kron, ao_mat)
-#print(eri_so[0])
 
 # Storing each fragment's h1 and h2 as a list
 h1_frag = []
@@ -141,24 +131,6 @@ h2_frag = []
 # Then construct h1' for each fragment
 # and for alpha-alpha, beta-beta blocks
 for idx in idx_list[1:]:
-    print(idx_list[0])
-    inactive_mask = idx_list[0]
-    eri_mix = eri_so[:,inactive_mask,:,inactive_mask].copy()
-    print(eri_mix.shape)
-    h1p = hcore_so[idx,idx].copy()
-    if h1p.size == 0:
-        h1p = np.einsum('jiki->jk', eri_mix[idx,:,idx,:])
-        for i,idx2 in enumerate(idx_list):
-            if i > 0 and idx2 != idx:
-                h1p += np.einsum('ikjl,kl->ij', eri_so[idx,idx2,idx,idx2],D_so[idx2,idx2])
-    else:
-        h1p += np.einsum('jiki->jk', eri_mix[idx,:,idx,:])
-        for i,idx2 in enumerate(idx_list):
-            if i > 0 and idx2 != idx:
-                h1p += np.einsum('ikjl,kl->ij', eri_so[idx,idx2,idx,idx2],D_so[idx2,idx2])
-
-    # Finally, construct total H_frag
-    h1_frag.append(h1p)
     h2_frag.append(eri[idx,idx,idx,idx])
 
 # using the built-in LASCI function h1e_for_cas
@@ -168,13 +140,14 @@ h1_frag_2 = h1e_for_cas(las)
 h1_frag = []
 for f in range(len(ncas_sub)):
     h1_frag.append(h1_frag_2[f][0][0])
-print("h1e: {}".format(h1_frag))
 
+# Checking that the fragment Hamiltonian shapes are correct
 for f in range(len(ncas_sub)):
     print("H1_frag shape: ", h1_frag[f].shape)
     print("H2_frag shape: ", h2_frag[f].shape)
 
 # Function below stolen from qiskit's Hamiltonian Phase Estimation class
+# To make the QPE slightly less expensive
 def _remove_identity(pauli_sum):
     """Remove any identity operators from `pauli_sum`. Return
     the sum of the coefficients of the identities and the new operator.
@@ -194,7 +167,6 @@ phases_list = []
 en_list = []
 total_op_list = []
 state_list = []
-dm_list = []
 
 for frag in range(len(ncas_sub)):
     # WARNING: these have to be set manually for each fragment!
@@ -230,8 +202,6 @@ for frag in range(len(ncas_sub)):
     driver_result.add_property(particle_number)
 
     second_q_ops = driver_result.second_q_ops()
-    second_q_ops[0].set_truncation(0)
-    #print(second_q_ops[0])
 
     # Choose fermion-to-qubit mapping
     qubit_converter = QubitConverter(mapper = ParityMapper(), two_qubit_reduction=True)
@@ -241,8 +211,9 @@ for frag in range(len(ncas_sub)):
     #print(hamiltonian)
 
     # Set the backend
-    quantum_instance = QuantumInstance(backend = Aer.get_backend('qasm_simulator'), shots=args.shots, optimization_level=0)
+    quantum_instance = QuantumInstance(backend = Aer.get_backend('qasm_simulator'), shots=args.shots)
 
+    # Numpy solver to estimate error in QPE energy due to trotterization
     np_solver = NumPyEigensolver(k=1)
     ed_result = np_solver.compute_eigenvalues(hamiltonian)
     print("NumPy result: ", ed_result.eigenvalues)
@@ -262,6 +233,7 @@ for frag in range(len(ncas_sub)):
     else:
         raise TypeError("Hamiltonian must be PauliSumOp, PauliOp or SummedOp.")
 
+    # Instantiate a PEScale object for conversion later
     pe_scale = PhaseEstimationScale.from_pauli_sum(hamiltonian_no_id)
 
     # QK: scale so that phase does not wrap.
@@ -271,6 +243,7 @@ for frag in range(len(ncas_sub)):
     evolution = PauliTrotterEvolution()
 
     # Create the unitary by evolving the Hamiltonian
+    # Here is the source of Trotter error
     unitary = evolution.convert(scaled_hamiltonian.exp_i())
 
     if not isinstance(unitary, QuantumCircuit):
@@ -287,12 +260,14 @@ for frag in range(len(ncas_sub)):
     #print(unitary)
 
     # Create an HF initial state and add it to the estimate function
-    # For our (H2)_2 system 8 spin orbs, 2 alpha 2 beta electrons
+    # For our H_2 system, 4 spin orbs, 1 alpha 1 beta electron
     init_state = HartreeFock(ncas_sub[frag]*2, (num_alpha,num_beta), qubit_converter)
 
-    circuit = qpe_solver.construct_circuit(unitary=unitary, state_preparation=init_state).decompose().decompose()
+    circuit = qpe_solver.construct_circuit(unitary=unitary, state_preparation=init_state).decompose()
+    target_basis = ['rx', 'ry', 'rz', 'h', 'cx']
+    circ_for_counts = transpile(circuit, basis_gates=target_basis, optimization_level=0)
 
-    op_dict = circuit.count_ops()
+    op_dict = circ_for_counts.count_ops()
     total_ops = sum(op_dict.values())
     total_op_list.append(total_ops)
     print("Operations: {}".format(op_dict))
@@ -300,11 +275,11 @@ for frag in range(len(ncas_sub)):
     print("Nonlocal gates: {}".format(circuit.num_nonlocal_gates()))
 
     # Estimate takes in a SummedPauli or a PauliOp and outputs a scaled estimate of the eigenvalue
-    res = qpe_solver.estimate(unitary=unitary, state_preparation=init_state)
-    phases = res.__dict__['_phases']
+    frag_result = qpe_solver.estimate(unitary=unitary, state_preparation=init_state)
+    phases = frag_result.__dict__['_phases']
     phases_list.append(phases)
-    print(res)
-    scaled_phases = pe_scale.scale_phases(res.filter_phases(cutoff=0.0, as_float=True), id_coefficient=0.0)
+    print(frag_result)
+    scaled_phases = pe_scale.scale_phases(frag_result.filter_phases(cutoff=0.0, as_float=True), id_coefficient=id_coefficient)
     scaled_phases = {v:k for k, v in scaled_phases.items()}
     print(scaled_phases)
     energy_dict = {k:scaled_phases[v] for k, v in phases.items()}
@@ -316,123 +291,107 @@ for frag in range(len(ncas_sub)):
 
     # For a given fragment, rerun the QPE until you get the ground state
 
-
     new_eig = 1e-5
     max_count = 5
     count = 0
     while np.allclose(new_eig, most_likely_eig) is False:
         print("Reusing... [",count,"]")
-        # Generating a new instance
+        # Generating a new single-shot instance
         new_instance = QuantumInstance(backend = Aer.get_backend('qasm_simulator'), shots=1)
 
         # Using the new instance in a solver
         new_qpe_solver = PhaseEstimation(num_evaluation_qubits=args.an, quantum_instance=new_instance)
 
-        # Creating the circuit in order to use the save_statevector instruction
-        new_circuit = QuantumCircuit(ncas_sub[frag]*2+args.an)
-        print(new_circuit.draw())
-        new_circuit = new_qpe_solver.construct_circuit(unitary=unitary, state_preparation=init_state)
         # Reusing the already-prepared unitary and initial state
+        new_circuit = new_qpe_solver.construct_circuit(unitary=unitary, state_preparation=init_state)
+
         ## To obtain a statevector after measurement, I must use the class function
         ## to add the measurements into the circuit before appending the save_statevector
         ## instruction. This is ugly, as I'm accessing class functions not meant to be
-        ## directly accessed.
+        ## directly accessed, but necessary.
         new_qpe_solver._add_measurement_if_required(new_circuit)
         new_circuit.save_statevector(label='final')
-        print(new_circuit.decompose().draw())
+
+        # Run the circuit with the save instruction
         circuit_result = new_qpe_solver._quantum_instance.execute(new_circuit)
         phases = new_qpe_solver._compute_phases(ncas_sub[frag]*2, circuit_result)
         gs_result = PhaseEstimationResult(args.an, circuit_result=circuit_result, phases=phases)
         pe_scale = PhaseEstimationScale.from_pauli_sum(hamiltonian_no_id)
-        scaled_phases = pe_scale.scale_phases(gs_result.filter_phases(cutoff=0.0, as_float=True), id_coefficient=0.0)
+        scaled_phases = pe_scale.scale_phases(gs_result.filter_phases(cutoff=0.0, as_float=True), id_coefficient=id_coefficient)
         (new_eig, v), = scaled_phases.items()
         print("New eig: ",new_eig)
-
-        # Saving a density matrix as an alternative to saving a statevector
-        # Can't load density matrices on 2 different registers on a single circuit 
-        # Also this density matrix is created without the measurement gates
-        #DM = DensityMatrix.from_instruction(new_qpe_solver.construct_circuit(unitary=unitary, state_preparation=init_state))
-        #print("Density matrix shape: ", DM.data.shape)
-        #print("Density matrix purity: ", DM.purity())
-        #eigvals, eigvecs = np.linalg.eig(DM.data)
-        #print(eigvals)
-        #print("Statevector:",eigvecs)
-        #PT = partial_trace(DM, list(range(args.an)))
-        #print("Partial trace purity: ", PT.purity())
-        #psi = gs_result.circuit_result.data(0)['final']
-
-        # Checking that partial_trace does what it's supposed to do
-        #state = DM
-        #qargs = list(range(args.an))
-        ### Taken from qiskit.quantum_info.partial_trace
-        ## QK:Compute traced shape
-        #traced_shape = state._op_shape.remove(qargs=qargs)
-        #print("Traced_shape",traced_shape)
-        #print("Traced_shape qargs",traced_shape._num_qargs_l)
-        ## QK:Density matrix case
-        ## QK:Trace first subsystem to avoid coping whole density matrix
-        #dims = state.dims(qargs)
-        #print("dims",dims)
-        #tr_op = SuperOp(np.eye(dims[0]).reshape(1, dims[0] ** 2), input_dims=[dims[0]], output_dims=[1])
-        #ret = state.evolve(tr_op, [qargs[0]])
-        ## QK:Trace over remaining subsystems
-        #for qarg, dim in zip(qargs[1:], dims[1:]):
-        #    tr_op = SuperOp(np.eye(dim).reshape(1, dim ** 2), input_dims=[dim], output_dims=[1])
-        #    ret = ret.evolve(tr_op, [qarg])
-        ## QK:Remove traced over subsystems which are listed as dimension 1
-        #ret._op_shape = traced_shape
 
         count = count + 1
         if count > max_count:
             print("Max iterations exceeded.")
             break
 
-    # Save only the statevector corresponding to the system
+    # Save only the statevector corresponding to the system qubits
     final_wfn = gs_result.circuit_result.data(0)['final']
     (an_state, v), = gs_result.__dict__['_phases'].items()
     print("Ancilla state: ",int(an_state,2))
-    #print(final_wfn)
     final_wfn = final_wfn[int(an_state, 2)::2**args.an]
-    #print(final_wfn)
     state_list.append(final_wfn)
-    #print("Partial trace shape: ",PT.data.shape)
-    #dm_list.append(PT)
 
 print("Phases: ",phases_list)
 print("en_list: ",en_list)
 print("total_op_list: ",total_op_list)
 
 # Setting up the Hamiltonian for the 2-fragment system
+# Getting the second-quantized ops for the whole system
 driver = PySCFDriver(atom=xyz, charge=0, spin=0, method=MethodType.RHF)
 driver_result = driver.run()
-
 second_q_ops = driver_result.second_q_ops()
+
 # This just outputs a qubit op corresponding to a 2nd quantized op
 qubit_ops = [qubit_converter.convert(op) for op in second_q_ops]
 hamiltonian = qubit_ops[0]
 
-# Create a quantum register with system qubits
-qr1 = QuantumRegister(np.sum(ncas_sub)*2, 'q1')
-
-# Create the state by  and normalizing
+# Create the state by doing a tensor product over fragment wavefunctions 
+# and normalizing
 total_state = np.kron(state_list[0],state_list[1])
 total_state = total_state/np.linalg.norm(total_state)
 
+# Create a quantum register with system qubits
+qr1 = QuantumRegister(np.sum(ncas_sub)*2, 'q1')
 new_circuit = QuantumCircuit(qr1)
 new_circuit.initialize(total_state, qubits=qr1)
-#print(new_circuit.draw())
+
+# Gate counts for initialization
+target_basis = ['rx', 'ry', 'rz', 'h', 'cx']
+circ_for_counts = transpile(new_circuit, basis_gates=target_basis, optimization_level=0)
+init_op_dict = circ_for_counts.count_ops()
+init_ops = sum(init_op_dict.values())
+print("Operations: {}".format(init_op_dict))
+print("Total operations: {}".format(init_ops))
 
 # Need to set up a new qubit_converter and quantum instance
+# They don't necessarily have to be the same as for the fragment QPE
 qubit_converter = QubitConverter(mapper = ParityMapper(), two_qubit_reduction=True)
 new_instance = QuantumInstance(backend = Aer.get_backend('aer_simulator'), shots=1024)
 
 # Setting up the VQE
 ansatz = UCCSD(qubit_converter=qubit_converter, num_particles=(2,2), num_spin_orbitals=8, initial_state=new_circuit)
 optimizer = L_BFGS_B(maxfun=10000, iprint=101)
-
 algorithm = VQE(ansatz=ansatz, optimizer=optimizer, quantum_instance=new_instance) 
-result = algorithm.compute_minimum_eigenvalue(hamiltonian)
-print(result)
 
-np.save('results_{}_{}.npy'.format(args.an, args.shots), {'n_frag':len(ncas_sub), 'phases':phases_list, 'energies':en_list, 'operations':total_op_list})
+# Gate counts for VQE (includes initialization)
+params = np.random.rand(26)
+vqe_ops = 0
+circ_list = transpile(algorithm.construct_circuit(params, hamiltonian), basis_gates=target_basis, optimization_level=0)
+for circ in circ_list:
+    print(circ.draw())
+    vqe_op_dict = circ.count_ops()
+    vqe_ops += sum(vqe_op_dict.values())
+print("Number of circuits in list: ",len(circ_list))
+print("Operations: {}".format(vqe_op_dict))
+print("Total operations: {}".format(vqe_ops))
 
+exit()
+
+# Running the VQE
+vqe_result = algorithm.compute_minimum_eigenvalue(hamiltonian)
+print(vqe_result)
+
+# Saving all relevant results in a dict
+np.save('results_{}_{}.npy'.format(args.an, args.shots), {'n_frag':len(ncas_sub), 'phases':phases_list, 'energies':en_list, 'frag_qpe_ops':total_op_list, 'init_op_dict': init_op_dict, 'init_ops': init_ops, 'vqe_op_dict':vqe_op_dict, 'vqe_ops': vqe_ops, 'vqe_result':vqe_result})

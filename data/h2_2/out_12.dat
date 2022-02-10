@@ -1,0 +1,56 @@
+pyscf plugins found in 
+/Users/ruheedcunha/Documents/mrh/pyscf
+When PYTHONPATH is set, it is recommended to load these plugins through the environment variable PYSCF_EXT_PATHoverwrite output file: h4_sto3g_12_8192.log
+HF energy:  -2.132195003918479
+LASSCF energy:  -2.2022821838641433
+Ncore:  0 Ncas:  4 Ncas_sub:  [2 2] Nelec_cas:  (2, 2)
+slice(0, 0, None)
+(8, 0, 8, 0)
+slice(0, 0, None)
+(8, 0, 8, 0)
+h1e: [array([[-1.11046879e+00, -4.96936511e-05],
+       [-4.96936511e-05, -5.88772126e-01]]), array([[-1.11038887e+00, -3.18841699e-05],
+       [-3.18841699e-05, -5.88690320e-01]])]
+H1_frag shape:  (2, 2)
+H2_frag shape:  (2, 2, 2, 2)
+H1_frag shape:  (2, 2)
+H2_frag shape:  (2, 2, 2, 2)
+Nuclear repulsion:  1.5797927167239267
+NumPy result:  [-1.62957716+6.22240703e-18j]
+Operations: OrderedDict([('ccx', 319410), ('cu', 155610), ('cp', 98346), ('u2', 12), ('p', 12), ('h', 12), ('u', 2)])
+Total operations: 573404
+Nonlocal gates: 573366
+Traceback (most recent call last):
+  File "las-qpe_so.py", line 286, in <module>
+    res = qpe_solver.estimate(unitary=unitary, state_preparation=init_state)
+  File "/Users/ruheedcunha/miniconda3/envs/pyscf_dev/lib/python3.7/site-packages/qiskit/algorithms/phase_estimators/phase_estimation.py", line 232, in estimate
+    pe_circuit = self.construct_circuit(unitary, state_preparation)
+  File "/Users/ruheedcunha/miniconda3/envs/pyscf_dev/lib/python3.7/site-packages/qiskit/algorithms/phase_estimators/phase_estimation.py", line 112, in construct_circuit
+    pe_circuit = circuit.library.PhaseEstimation(num_evaluation_qubits, unitary)
+  File "/Users/ruheedcunha/miniconda3/envs/pyscf_dev/lib/python3.7/site-packages/qiskit/circuit/library/phase_estimation.py", line 94, in __init__
+    circuit.compose(unitary.power(2 ** j).control(), qubits=[j] + qr_state[:], inplace=True)
+  File "/Users/ruheedcunha/miniconda3/envs/pyscf_dev/lib/python3.7/site-packages/qiskit/circuit/quantumcircuit.py", line 554, in control
+    controlled_gate = gate.control(num_ctrl_qubits, label, ctrl_state)
+  File "/Users/ruheedcunha/miniconda3/envs/pyscf_dev/lib/python3.7/site-packages/qiskit/circuit/gate.py", line 119, in control
+    return add_control(self, num_ctrl_qubits, label, ctrl_state)
+  File "/Users/ruheedcunha/miniconda3/envs/pyscf_dev/lib/python3.7/site-packages/qiskit/circuit/add_control.py", line 59, in add_control
+    cgate = control(operation, num_ctrl_qubits=num_ctrl_qubits, label=label, ctrl_state=ctrl_state)
+  File "/Users/ruheedcunha/miniconda3/envs/pyscf_dev/lib/python3.7/site-packages/qiskit/circuit/add_control.py", line 161, in control
+    q_ancillae,
+  File "/Users/ruheedcunha/miniconda3/envs/pyscf_dev/lib/python3.7/site-packages/qiskit/circuit/quantumcircuit.py", line 2823, in mct
+    return self.mcx(control_qubits, target_qubit, ancilla_qubits, mode)
+  File "/Users/ruheedcunha/miniconda3/envs/pyscf_dev/lib/python3.7/site-packages/qiskit/circuit/quantumcircuit.py", line 2781, in mcx
+    "recursion": MCXRecursive(num_ctrl_qubits),
+  File "/Users/ruheedcunha/miniconda3/envs/pyscf_dev/lib/python3.7/site-packages/qiskit/circuit/library/standard_gates/x.py", line 867, in __new__
+    gate.__init__(label=label, ctrl_state=ctrl_state)
+  File "/Users/ruheedcunha/miniconda3/envs/pyscf_dev/lib/python3.7/site-packages/qiskit/circuit/library/standard_gates/x.py", line 286, in __init__
+    "ccx", 3, [], num_ctrl_qubits=2, label=label, ctrl_state=ctrl_state, base_gate=XGate()
+  File "/Users/ruheedcunha/miniconda3/envs/pyscf_dev/lib/python3.7/site-packages/qiskit/circuit/controlledgate.py", line 94, in __init__
+    self.base_gate = None if base_gate is None else base_gate.copy()
+  File "/Users/ruheedcunha/miniconda3/envs/pyscf_dev/lib/python3.7/site-packages/qiskit/circuit/instruction.py", line 420, in copy
+    cpy = self.__deepcopy__()
+  File "/Users/ruheedcunha/miniconda3/envs/pyscf_dev/lib/python3.7/site-packages/qiskit/circuit/instruction.py", line 427, in __deepcopy__
+    cpy = copy.copy(self)
+  File "/Users/ruheedcunha/miniconda3/envs/pyscf_dev/lib/python3.7/copy.py", line 104, in copy
+    if isinstance(rv, str):
+KeyboardInterrupt

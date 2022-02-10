@@ -7,7 +7,6 @@ from pyscf.tools import fcidump
 # mrh imports
 from mrh.my_pyscf.mcscf.lasscf_o0 import LASSCF
 from mrh.my_pyscf.mcscf.lasci import h1e_for_cas
-from c4h6_struct import structure
 
 # Qiskit imports
 from qiskit_nature.properties.second_quantization.electronic import (
@@ -21,26 +20,21 @@ from qiskit_nature.properties.second_quantization.electronic.integrals import (
 )
 from qiskit_nature.properties.second_quantization.electronic.bases import ElectronicBasis
 from qiskit_nature.converters.second_quantization import QubitConverter
-from qiskit_nature.drivers.second_quantization import PySCFDriver, MethodType
 from qiskit_nature.mappers.second_quantization import JordanWignerMapper, ParityMapper
-from qiskit.providers.aer import StatevectorSimulator, QasmSimulator
-from qiskit import Aer, transpile
-from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
-#from qiskit.quantum_info.states.densitymatrix import DensityMatrix
-from qiskit.visualization import plot_state_city
-from qiskit.quantum_info import DensityMatrix, partial_trace
-from qiskit.quantum_info.operators.channel import SuperOp
+from qiskit.providers.aer import StatevectorSimulator
+from qiskit import Aer
+from qiskit import QuantumCircuit
 from qiskit.utils import QuantumInstance
 from qiskit_nature.algorithms import VQEUCCFactory, GroundStateEigensolver
-from qiskit_nature.circuit.library import HartreeFock, UCCSD
-from qiskit.algorithms import NumPyEigensolver, PhaseEstimation, PhaseEstimationScale, VQE 
-from qiskit.algorithms.optimizers import L_BFGS_B
-from qiskit.algorithms.phase_estimators import PhaseEstimationResult
+from qiskit_nature.circuit.library import HartreeFock
+from qiskit.algorithms import NumPyEigensolver, PhaseEstimation, PhaseEstimationScale
 from qiskit.opflow import PauliTrotterEvolution,SummedOp,PauliOp,MatrixOp,PauliSumOp,StateFn
 
 parser = ArgumentParser(description='Do QPE with a LAS reference')
 parser.add_argument('--an', type=int, default=1, help='number of ancilla qubits')
 parser.add_argument('--shots', type=int, default=1024, help='number of shots for the simulator')
+parser.add_argument('--log', type=str, default='h4_sto3g', help='name of logfile')
+parser.add_argument('--npy', type=str, default='results', help='name of npy file')
 args = parser.parse_args()
 
 # Define molecule: (H2)_2
@@ -48,15 +42,8 @@ xyz = '''H 0.0 0.0 0.0
          H 1.0 0.0 0.0
          H 0.2 3.9 0.1
         H 1.159166 4.1 -0.1'''
-mol = gto.M (atom = xyz, basis = 'sto-3g', output='h4_sto3g.log',
+mol = gto.M (atom = xyz, basis = 'sto-3g', output='{}_{}_{}.log'.format(args.log, args.an, args.shots),
     symmetry=False, verbose=lib.logger.DEBUG)
-
-# Define molecule: C_4H_6
-#norb = 8
-#nelec = 8
-#norb_f = (4,4)
-#nelec_f = ((2,2),(2,2))
-#mol = structure (0.0, 0.0, output='c4h6_631g_{}_{}.log'.format(args.an, args.shots), verbose=lib.logger.DEBUG)
 
 # Do RHF
 mf = scf.RHF(mol).run()
@@ -193,8 +180,6 @@ def _remove_identity(pauli_sum):
 phases_list = []
 en_list = []
 total_op_list = []
-state_list = []
-dm_list = []
 
 for frag in range(len(ncas_sub)):
     # WARNING: these have to be set manually for each fragment!
@@ -241,7 +226,7 @@ for frag in range(len(ncas_sub)):
     #print(hamiltonian)
 
     # Set the backend
-    quantum_instance = QuantumInstance(backend = Aer.get_backend('qasm_simulator'), shots=args.shots, optimization_level=0)
+    quantum_instance = QuantumInstance(backend = Aer.get_backend('aer_simulator'), shots=args.shots, optimization_level=0)
 
     np_solver = NumPyEigensolver(k=1)
     ed_result = np_solver.compute_eigenvalues(hamiltonian)
@@ -263,6 +248,7 @@ for frag in range(len(ncas_sub)):
         raise TypeError("Hamiltonian must be PauliSumOp, PauliOp or SummedOp.")
 
     pe_scale = PhaseEstimationScale.from_pauli_sum(hamiltonian_no_id)
+    print("Bound: ",pe_scale._bound)
 
     # QK: scale so that phase does not wrap.
     scaled_hamiltonian = -pe_scale.scale * hamiltonian_no_id  
@@ -304,7 +290,7 @@ for frag in range(len(ncas_sub)):
     phases = res.__dict__['_phases']
     phases_list.append(phases)
     print(res)
-    scaled_phases = pe_scale.scale_phases(res.filter_phases(cutoff=0.0, as_float=True), id_coefficient=0.0)
+    scaled_phases = pe_scale.scale_phases(res.filter_phases(cutoff=0.0, as_float=True), id_coefficient=id_coefficient)
     scaled_phases = {v:k for k, v in scaled_phases.items()}
     print(scaled_phases)
     energy_dict = {k:scaled_phases[v] for k, v in phases.items()}
@@ -314,125 +300,8 @@ for frag in range(len(ncas_sub)):
     print("Most likely eigenvalue: ", most_likely_eig)
     print("Most likely ancilla sign: ", most_likely_an)
 
-    # For a given fragment, rerun the QPE until you get the ground state
-
-
-    new_eig = 1e-5
-    max_count = 5
-    count = 0
-    while np.allclose(new_eig, most_likely_eig) is False:
-        print("Reusing... [",count,"]")
-        # Generating a new instance
-        new_instance = QuantumInstance(backend = Aer.get_backend('qasm_simulator'), shots=1)
-
-        # Using the new instance in a solver
-        new_qpe_solver = PhaseEstimation(num_evaluation_qubits=args.an, quantum_instance=new_instance)
-
-        # Creating the circuit in order to use the save_statevector instruction
-        new_circuit = QuantumCircuit(ncas_sub[frag]*2+args.an)
-        print(new_circuit.draw())
-        new_circuit = new_qpe_solver.construct_circuit(unitary=unitary, state_preparation=init_state)
-        # Reusing the already-prepared unitary and initial state
-        ## To obtain a statevector after measurement, I must use the class function
-        ## to add the measurements into the circuit before appending the save_statevector
-        ## instruction. This is ugly, as I'm accessing class functions not meant to be
-        ## directly accessed.
-        new_qpe_solver._add_measurement_if_required(new_circuit)
-        new_circuit.save_statevector(label='final')
-        print(new_circuit.decompose().draw())
-        circuit_result = new_qpe_solver._quantum_instance.execute(new_circuit)
-        phases = new_qpe_solver._compute_phases(ncas_sub[frag]*2, circuit_result)
-        gs_result = PhaseEstimationResult(args.an, circuit_result=circuit_result, phases=phases)
-        pe_scale = PhaseEstimationScale.from_pauli_sum(hamiltonian_no_id)
-        scaled_phases = pe_scale.scale_phases(gs_result.filter_phases(cutoff=0.0, as_float=True), id_coefficient=0.0)
-        (new_eig, v), = scaled_phases.items()
-        print("New eig: ",new_eig)
-
-        # Saving a density matrix as an alternative to saving a statevector
-        # Can't load density matrices on 2 different registers on a single circuit 
-        # Also this density matrix is created without the measurement gates
-        #DM = DensityMatrix.from_instruction(new_qpe_solver.construct_circuit(unitary=unitary, state_preparation=init_state))
-        #print("Density matrix shape: ", DM.data.shape)
-        #print("Density matrix purity: ", DM.purity())
-        #eigvals, eigvecs = np.linalg.eig(DM.data)
-        #print(eigvals)
-        #print("Statevector:",eigvecs)
-        #PT = partial_trace(DM, list(range(args.an)))
-        #print("Partial trace purity: ", PT.purity())
-        #psi = gs_result.circuit_result.data(0)['final']
-
-        # Checking that partial_trace does what it's supposed to do
-        #state = DM
-        #qargs = list(range(args.an))
-        ### Taken from qiskit.quantum_info.partial_trace
-        ## QK:Compute traced shape
-        #traced_shape = state._op_shape.remove(qargs=qargs)
-        #print("Traced_shape",traced_shape)
-        #print("Traced_shape qargs",traced_shape._num_qargs_l)
-        ## QK:Density matrix case
-        ## QK:Trace first subsystem to avoid coping whole density matrix
-        #dims = state.dims(qargs)
-        #print("dims",dims)
-        #tr_op = SuperOp(np.eye(dims[0]).reshape(1, dims[0] ** 2), input_dims=[dims[0]], output_dims=[1])
-        #ret = state.evolve(tr_op, [qargs[0]])
-        ## QK:Trace over remaining subsystems
-        #for qarg, dim in zip(qargs[1:], dims[1:]):
-        #    tr_op = SuperOp(np.eye(dim).reshape(1, dim ** 2), input_dims=[dim], output_dims=[1])
-        #    ret = ret.evolve(tr_op, [qarg])
-        ## QK:Remove traced over subsystems which are listed as dimension 1
-        #ret._op_shape = traced_shape
-
-        count = count + 1
-        if count > max_count:
-            print("Max iterations exceeded.")
-            break
-
-    # Save only the statevector corresponding to the system
-    final_wfn = gs_result.circuit_result.data(0)['final']
-    (an_state, v), = gs_result.__dict__['_phases'].items()
-    print("Ancilla state: ",int(an_state,2))
-    #print(final_wfn)
-    final_wfn = final_wfn[int(an_state, 2)::2**args.an]
-    #print(final_wfn)
-    state_list.append(final_wfn)
-    #print("Partial trace shape: ",PT.data.shape)
-    #dm_list.append(PT)
-
+np.save('{}_{}_{}.npy'.format(args.npy, args.an, args.shots), {'n_frag':len(ncas_sub), 'phases':phases_list, 'energies':en_list, 'operations':total_op_list})
 print("Phases: ",phases_list)
 print("en_list: ",en_list)
 print("total_op_list: ",total_op_list)
-
-# Setting up the Hamiltonian for the 2-fragment system
-driver = PySCFDriver(atom=xyz, charge=0, spin=0, method=MethodType.RHF)
-driver_result = driver.run()
-
-second_q_ops = driver_result.second_q_ops()
-# This just outputs a qubit op corresponding to a 2nd quantized op
-qubit_ops = [qubit_converter.convert(op) for op in second_q_ops]
-hamiltonian = qubit_ops[0]
-
-# Create a quantum register with system qubits
-qr1 = QuantumRegister(np.sum(ncas_sub)*2, 'q1')
-
-# Create the state by  and normalizing
-total_state = np.kron(state_list[0],state_list[1])
-total_state = total_state/np.linalg.norm(total_state)
-
-new_circuit = QuantumCircuit(qr1)
-new_circuit.initialize(total_state, qubits=qr1)
-#print(new_circuit.draw())
-
-# Need to set up a new qubit_converter and quantum instance
-qubit_converter = QubitConverter(mapper = ParityMapper(), two_qubit_reduction=True)
-new_instance = QuantumInstance(backend = Aer.get_backend('aer_simulator'), shots=1024)
-
-# Setting up the VQE
-ansatz = UCCSD(qubit_converter=qubit_converter, num_particles=(2,2), num_spin_orbitals=8, initial_state=new_circuit)
-optimizer = L_BFGS_B(maxfun=10000, iprint=101)
-
-algorithm = VQE(ansatz=ansatz, optimizer=optimizer, quantum_instance=new_instance) 
-result = algorithm.compute_minimum_eigenvalue(hamiltonian)
-print(result)
-
-np.save('results_{}_{}.npy'.format(args.an, args.shots), {'n_frag':len(ncas_sub), 'phases':phases_list, 'energies':en_list, 'operations':total_op_list})
 

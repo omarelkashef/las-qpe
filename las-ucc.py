@@ -39,7 +39,7 @@ from qiskit.quantum_info import DensityMatrix, partial_trace
 from qiskit.quantum_info.operators.channel import SuperOp
 from qiskit.utils import QuantumInstance
 from qiskit_nature.algorithms import VQEUCCFactory, GroundStateEigensolver
-from qiskit_nature.circuit.library import HartreeFock, UCCSD
+from qiskit_nature.circuit.library import HartreeFock, UCCSD, UCC
 from qiskit.algorithms import NumPyEigensolver, PhaseEstimation, PhaseEstimationScale, VQE 
 from qiskit.algorithms.optimizers import L_BFGS_B, COBYLA, BOBYQA
 from qiskit.algorithms.phase_estimators import PhaseEstimationResult
@@ -70,6 +70,7 @@ mf = scf.RHF(mol).run()
 print("HF energy: ", mf.e_tot)
 
 # Create LASSCF object
+# Keywords: (wavefunction obj, num_alpha in each subspace, num_beta in each subspace, spin multiplicity in each subspace)
 #las = LASSCF(mf, (2,),(2,), spin_sub=(1,))
 #las = LASSCF(mf, (1,1),(1,1), spin_sub=(2,2))
 las = LASSCF(mf, (2,2),(2,2), spin_sub=(1,1))
@@ -168,6 +169,7 @@ phases_list = []
 en_list = []
 total_op_list = []
 state_list = []
+result_list = []
 
 frag_t0 = time.time()
 
@@ -336,6 +338,7 @@ for frag in range(len(ncas_sub)):
     final_wfn = final_wfn[int(an_state[::-1],2)::2**args.an]
     print("After reducing: ",final_wfn)
     state_list.append(final_wfn)
+    result_list.append(gs_result)
 
 frag_t1 = time.time()
 
@@ -379,7 +382,7 @@ print("Operations: {}".format(init_op_dict))
 print("Total operations: {}".format(init_ops))
 
 # Setting up the VQE
-ansatz = UCCSD(qubit_converter=qubit_converter, num_particles=(2,2), num_spin_orbitals=8, initial_state=new_circuit)
+ansatz = UCC(qubit_converter=qubit_converter, num_particles=(2,2), num_spin_orbitals=8, excitations='sd', alpha_spin=True, beta_spin=True, generalized=True, initial_state=new_circuit)
 #optimizer = L_BFGS_B(maxfun=10000, iprint=101)
 optimizer = COBYLA()
 ansatz.parameter_bounds = np.array([[-np.pi,np.pi] for x in range(26)])

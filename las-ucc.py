@@ -6,6 +6,7 @@
 
 import numpy as np
 import logging
+import time
 from argparse import ArgumentParser
 # PySCF imports
 from pyscf import gto, scf, lib, mcscf, ao2mo
@@ -40,7 +41,7 @@ from qiskit.utils import QuantumInstance
 from qiskit_nature.algorithms import VQEUCCFactory, GroundStateEigensolver
 from qiskit_nature.circuit.library import HartreeFock, UCCSD
 from qiskit.algorithms import NumPyEigensolver, PhaseEstimation, PhaseEstimationScale, VQE 
-from qiskit.algorithms.optimizers import L_BFGS_B
+from qiskit.algorithms.optimizers import L_BFGS_B, COBYLA, BOBYQA
 from qiskit.algorithms.phase_estimators import PhaseEstimationResult
 from qiskit.opflow import PauliTrotterEvolution,SummedOp,PauliOp,MatrixOp,PauliSumOp,StateFn
 
@@ -168,6 +169,8 @@ en_list = []
 total_op_list = []
 state_list = []
 
+frag_t0 = time.time()
+
 for frag in range(len(ncas_sub)):
     # WARNING: these have to be set manually for each fragment!
     num_alpha = int(nelec_cas[0] / 2)
@@ -208,10 +211,9 @@ for frag in range(len(ncas_sub)):
     # This just outputs a qubit op corresponding to a 2nd quantized op
     qubit_ops = [qubit_converter.convert(op) for op in second_q_ops]
     hamiltonian = qubit_ops[0]
-    #print(hamiltonian)
 
     # Set the backend
-    quantum_instance = QuantumInstance(backend = Aer.get_backend('qasm_simulator'), shots=args.shots)
+    quantum_instance = QuantumInstance(backend = Aer.get_backend('aer_simulator'), shots=args.shots)
 
     # Numpy solver to estimate error in QPE energy due to trotterization
     np_solver = NumPyEigensolver(k=1)
@@ -297,7 +299,7 @@ for frag in range(len(ncas_sub)):
     while np.allclose(new_eig, most_likely_eig) is False:
         print("Reusing... [",count,"]")
         # Generating a new single-shot instance
-        new_instance = QuantumInstance(backend = Aer.get_backend('qasm_simulator'), shots=1)
+        new_instance = QuantumInstance(backend = Aer.get_backend('aer_simulator'), shots=1)
 
         # Using the new instance in a solver
         new_qpe_solver = PhaseEstimation(num_evaluation_qubits=args.an, quantum_instance=new_instance)
@@ -329,10 +331,15 @@ for frag in range(len(ncas_sub)):
     # Save only the statevector corresponding to the system qubits
     final_wfn = gs_result.circuit_result.data(0)['final']
     (an_state, v), = gs_result.__dict__['_phases'].items()
-    print("Ancilla state: ",int(an_state,2))
-    final_wfn = final_wfn[int(an_state, 2)::2**args.an]
+    print("Ancilla state: ",an_state)
+    print("Before reducing:",final_wfn)
+    final_wfn = final_wfn[int(an_state[::-1],2)::2**args.an]
+    print("After reducing: ",final_wfn)
     state_list.append(final_wfn)
 
+frag_t1 = time.time()
+
+print("Fragment QPE total time (s): ",frag_t1-frag_t0)
 print("Phases: ",phases_list)
 print("en_list: ",en_list)
 print("total_op_list: ",total_op_list)
@@ -343,9 +350,15 @@ driver = PySCFDriver(atom=xyz, charge=0, spin=0, method=MethodType.RHF)
 driver_result = driver.run()
 second_q_ops = driver_result.second_q_ops()
 
+# Need to set up a new qubit_converter and quantum instance
+# They don't necessarily have to be the same as for the fragment QPE
+qubit_converter = QubitConverter(mapper = ParityMapper(), two_qubit_reduction=True)
+new_instance = QuantumInstance(backend = Aer.get_backend('aer_simulator'), shots=1024)
+
 # This just outputs a qubit op corresponding to a 2nd quantized op
 qubit_ops = [qubit_converter.convert(op) for op in second_q_ops]
 hamiltonian = qubit_ops[0]
+#print(hamiltonian)
 
 # Create the state by doing a tensor product over fragment wavefunctions 
 # and normalizing
@@ -365,14 +378,11 @@ init_ops = sum(init_op_dict.values())
 print("Operations: {}".format(init_op_dict))
 print("Total operations: {}".format(init_ops))
 
-# Need to set up a new qubit_converter and quantum instance
-# They don't necessarily have to be the same as for the fragment QPE
-qubit_converter = QubitConverter(mapper = ParityMapper(), two_qubit_reduction=True)
-new_instance = QuantumInstance(backend = Aer.get_backend('aer_simulator'), shots=1024)
-
 # Setting up the VQE
 ansatz = UCCSD(qubit_converter=qubit_converter, num_particles=(2,2), num_spin_orbitals=8, initial_state=new_circuit)
-optimizer = L_BFGS_B(maxfun=10000, iprint=101)
+#optimizer = L_BFGS_B(maxfun=10000, iprint=101)
+optimizer = COBYLA()
+ansatz.parameter_bounds = np.array([[-np.pi,np.pi] for x in range(26)])
 algorithm = VQE(ansatz=ansatz, optimizer=optimizer, quantum_instance=new_instance) 
 
 # Gate counts for VQE (includes initialization)
@@ -380,18 +390,18 @@ params = np.random.rand(26)
 vqe_ops = 0
 circ_list = transpile(algorithm.construct_circuit(params, hamiltonian), basis_gates=target_basis, optimization_level=0)
 for circ in circ_list:
-    print(circ.draw())
     vqe_op_dict = circ.count_ops()
     vqe_ops += sum(vqe_op_dict.values())
 print("Number of circuits in list: ",len(circ_list))
 print("Operations: {}".format(vqe_op_dict))
 print("Total operations: {}".format(vqe_ops))
 
-exit()
-
 # Running the VQE
+t0 = time.time()
 vqe_result = algorithm.compute_minimum_eigenvalue(hamiltonian)
 print(vqe_result)
+t1 = time.time()
+print("Time taken for VQE: ",t1-t0)
 
 # Saving all relevant results in a dict
 np.save('results_{}_{}.npy'.format(args.an, args.shots), {'n_frag':len(ncas_sub), 'phases':phases_list, 'energies':en_list, 'frag_qpe_ops':total_op_list, 'init_op_dict': init_op_dict, 'init_ops': init_ops, 'vqe_op_dict':vqe_op_dict, 'vqe_ops': vqe_ops, 'vqe_result':vqe_result})

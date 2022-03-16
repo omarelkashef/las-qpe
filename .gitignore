@@ -1,3 +1,4 @@
 fcidump*
 *.log
 *.out
+.DS_store

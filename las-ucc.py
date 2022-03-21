@@ -335,7 +335,7 @@ for frag in range(len(ncas_sub)):
     (an_state, v), = gs_result.__dict__['_phases'].items()
     print("Ancilla state: ",an_state)
     print("Before reducing:",final_wfn)
-    final_wfn = final_wfn[int(an_state[::-1],2)::2**args.an]
+    final_wfn = final_wfn._data[int(an_state[::-1],2)::2**args.an]
     print("After reducing: ",final_wfn)
     state_list.append(final_wfn)
     result_list.append(gs_result)

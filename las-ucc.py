@@ -389,7 +389,7 @@ ansatz.parameter_bounds = np.array([[-np.pi,np.pi] for x in range(26)])
 algorithm = VQE(ansatz=ansatz, optimizer=optimizer, quantum_instance=new_instance) 
 
 # Gate counts for VQE (includes initialization)
-params = np.random.rand(26)
+params = np.zeros(50)
 vqe_ops = 0
 circ_list = transpile(algorithm.construct_circuit(params, hamiltonian), basis_gates=target_basis, optimization_level=0)
 for circ in circ_list:

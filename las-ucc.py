@@ -14,7 +14,8 @@ from pyscf.tools import fcidump
 # mrh imports
 from mrh.my_pyscf.mcscf.lasscf_o0 import LASSCF
 from mrh.my_pyscf.mcscf.lasci import h1e_for_cas
-from c4h6_struct import structure
+#from c4h6_struct import structure
+from get_geom import get_geom
 
 # Qiskit imports
 from qiskit_nature.properties.second_quantization.electronic import (
@@ -35,7 +36,7 @@ from qiskit import Aer, transpile
 from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
 #from qiskit.quantum_info.states.densitymatrix import DensityMatrix
 from qiskit.visualization import plot_state_city
-from qiskit.quantum_info import DensityMatrix, partial_trace
+from qiskit.quantum_info import DensityMatrix, partial_trace, Statevector
 from qiskit.quantum_info.operators.channel import SuperOp
 from qiskit.utils import QuantumInstance
 from qiskit_nature.algorithms import VQEUCCFactory, GroundStateEigensolver
@@ -47,15 +48,17 @@ from qiskit.opflow import PauliTrotterEvolution,SummedOp,PauliOp,MatrixOp,PauliS
 
 parser = ArgumentParser(description='Do LAS-UCC, specifying num of ancillas and shots')
 parser.add_argument('--an', type=int, default=1, help='number of ancilla qubits')
+parser.add_argument('--dist', type=float, default=1.35296239, help='distance of H2s from one another')
 parser.add_argument('--shots', type=int, default=1024, help='number of shots for the simulator')
 args = parser.parse_args()
 
 # Define molecule: (H2)_2
-xyz = '''H 0.0 0.0 0.0
-         H 1.0 0.0 0.0
-         H 0.2 3.9 0.1
-        H 1.159166 4.1 -0.1'''
-mol = gto.M (atom = xyz, basis = 'sto-3g', output='h4_sto3g.log',
+xyz = get_geom('scan', dist=args.dist)
+#xyz = '''H 0.0 0.0 0.0
+#             H 1.0 0.0 0.0
+#             H 0.2 1.6 0.1
+#             H 1.159166 1.3 -0.1'''
+mol = gto.M (atom = xyz, basis = 'sto-3g', output='h4_sto3g_{}.log'.format(args.dist),
     symmetry=False, verbose=lib.logger.DEBUG)
 
 # Define molecule: C_4H_6
@@ -117,11 +120,6 @@ D_mo = las.make_rdm1(mo_coeff=las.mo_coeff)
 # Convert to spin orbitals
 D_so = np.block([[D_mo, np.zeros_like(D_mo)],[np.zeros_like(D_mo), D_mo]])
 
-hcore_ao = mf.get_hcore(mol)
-hcore_mo = np.einsum('pi,pq,qj->ij', loc_mo_coeff, hcore_ao, loc_mo_coeff)
-# Convert to spin orbitals
-hcore_so = np.block([[hcore_mo, np.zeros_like(hcore_mo)],[np.zeros_like(hcore_mo), hcore_mo]])
-
 nso = mol.nao_nr() * 2
 eri_4fold = ao2mo.kernel(mol.intor('int2e'), mo_coeffs=loc_mo_coeff)
 eri = ao2mo.restore(1, eri_4fold,mol.nao_nr())
@@ -136,12 +134,17 @@ for idx in idx_list[1:]:
     h2_frag.append(eri[idx,idx,idx,idx])
 
 # using the built-in LASCI function h1e_for_cas
-h1_frag_2 = h1e_for_cas(las)
+h1_las = las.h1e_for_cas()
+
+# Trying CASSCF h1
+mc = mcscf.CASCI(mf,4,4)
+mc.kernel(loc_mo_coeff)
+cas_h1e, e_core = mc.h1e_for_cas()
 
 # Just using h1e_for_cas as my fragment h1
 h1_frag = []
 for f in range(len(ncas_sub)):
-    h1_frag.append(h1_frag_2[f][0][0])
+    h1_frag.append(h1_las[f][0][0])
 
 # Checking that the fragment Hamiltonian shapes are correct
 for f in range(len(ncas_sub)):
@@ -209,7 +212,7 @@ for frag in range(len(ncas_sub)):
     second_q_ops = driver_result.second_q_ops()
 
     # Choose fermion-to-qubit mapping
-    qubit_converter = QubitConverter(mapper = ParityMapper(), two_qubit_reduction=True)
+    qubit_converter = QubitConverter(mapper = JordanWignerMapper(), two_qubit_reduction=False)
     # This just outputs a qubit op corresponding to a 2nd quantized op
     qubit_ops = [qubit_converter.convert(op) for op in second_q_ops]
     hamiltonian = qubit_ops[0]
@@ -221,6 +224,7 @@ for frag in range(len(ncas_sub)):
     np_solver = NumPyEigensolver(k=1)
     ed_result = np_solver.compute_eigenvalues(hamiltonian)
     print("NumPy result: ", ed_result.eigenvalues)
+    numpy_wfn = ed_result.eigenstates
 
     # Can choose a regular solver from qiskit.algorithms
     qpe_solver = PhaseEstimation(num_evaluation_qubits=args.an, quantum_instance=quantum_instance)
@@ -267,16 +271,18 @@ for frag in range(len(ncas_sub)):
     # For our H_2 system, 4 spin orbs, 1 alpha 1 beta electron
     init_state = HartreeFock(ncas_sub[frag]*2, (num_alpha,num_beta), qubit_converter)
 
-    circuit = qpe_solver.construct_circuit(unitary=unitary, state_preparation=init_state).decompose()
-    target_basis = ['rx', 'ry', 'rz', 'h', 'cx']
-    circ_for_counts = transpile(circuit, basis_gates=target_basis, optimization_level=0)
+    # Gate counts
+    if int(args.dist) == 0.0:
+        circuit = qpe_solver.construct_circuit(unitary=unitary, state_preparation=init_state).decompose()
+        target_basis = ['rx', 'ry', 'rz', 'h', 'cx']
+        circ_for_counts = transpile(circuit, basis_gates=target_basis, optimization_level=0)
 
-    op_dict = circ_for_counts.count_ops()
-    total_ops = sum(op_dict.values())
-    total_op_list.append(total_ops)
-    print("Operations: {}".format(op_dict))
-    print("Total operations: {}".format(total_ops))
-    print("Nonlocal gates: {}".format(circuit.num_nonlocal_gates()))
+        op_dict = circ_for_counts.count_ops()
+        total_ops = sum(op_dict.values())
+        total_op_list.append(total_ops)
+        print("Operations: {}".format(op_dict))
+        print("Total operations: {}".format(total_ops))
+        print("Nonlocal gates: {}".format(circuit.num_nonlocal_gates()))
 
     # Estimate takes in a SummedPauli or a PauliOp and outputs a scaled estimate of the eigenvalue
     frag_result = qpe_solver.estimate(unitary=unitary, state_preparation=init_state)
@@ -337,6 +343,9 @@ for frag in range(len(ncas_sub)):
     print("Before reducing:",final_wfn)
     final_wfn = final_wfn._data[int(an_state[::-1],2)::2**args.an]
     print("After reducing: ",final_wfn)
+    final_state = Statevector(final_wfn)
+    overlap = numpy_wfn[0].primitive.inner(final_state)
+    print("Overlap of numpy wfn and QPE statevector: ", overlap)
     state_list.append(final_wfn)
     result_list.append(gs_result)
 
@@ -349,55 +358,109 @@ print("total_op_list: ",total_op_list)
 
 # Setting up the Hamiltonian for the 2-fragment system
 # Getting the second-quantized ops for the whole system
-driver = PySCFDriver(atom=xyz, charge=0, spin=0, method=MethodType.RHF)
-driver_result = driver.run()
+num_alpha = nelec_cas[0]
+num_beta = nelec_cas[1]
+
+# Hacking together an ElectronicStructureDriverResult to create second_q_ops
+# Lines below stolen from qiskit's FCIDump driver and modified
+particle_number = ParticleNumber(
+    num_spin_orbitals=np.sum(ncas_sub)*2,
+    num_particles=(num_alpha, num_beta),
+)
+
+# Assuming an RHF reference for now, so h1_b, h2_ab, h2_bb are created using 
+# the corresponding spots from h1_frag and just the aa term from h2_frag
+electronic_energy = ElectronicEnergy.from_raw_integrals(
+        # Using MO basis here for simplified conversion
+        ElectronicBasis.MO, cas_h1e, eri)
+
+driver_result = ElectronicStructureDriverResult()
+driver_result.add_property(electronic_energy)
+driver_result.add_property(particle_number)
+
+#driver_result = PySCFDriver(atom=xyz, basis='sto-3g').run()
 second_q_ops = driver_result.second_q_ops()
 
 # Need to set up a new qubit_converter and quantum instance
 # They don't necessarily have to be the same as for the fragment QPE
-qubit_converter = QubitConverter(mapper = ParityMapper(), two_qubit_reduction=True)
-new_instance = QuantumInstance(backend = Aer.get_backend('aer_simulator'), shots=1024)
+qubit_converter = QubitConverter(mapper = JordanWignerMapper(), two_qubit_reduction=False)
+new_instance = QuantumInstance(backend = Aer.get_backend('aer_simulator'), shots=10240)
 
 # This just outputs a qubit op corresponding to a 2nd quantized op
 qubit_ops = [qubit_converter.convert(op) for op in second_q_ops]
 hamiltonian = qubit_ops[0]
 #print(hamiltonian)
+'''
+# Initialize using LASCI vector
+# Code stolen from Riddhish
+def get_so_ci_vec(ci_vec, nsporbs,nelec):
+    lookup = {}
+    cnt = 0
+    norbs = nsporbs//2
 
-# Create the state by doing a tensor product over fragment wavefunctions 
-# and normalizing
-total_state = np.kron(state_list[0],state_list[1])
-total_state = total_state/np.linalg.norm(total_state)
+    for ii in range (2**norbs):
+        if f"{ii:0{norbs}b}".count('1') == np.sum(nelec)//2:
+            lookup[f"{ii:0{norbs}b}"] = cnt
+            cnt +=1
+    # This is just indexing the hilber space from 0,1,...,mCn
+    #print (lookup)
 
-# Create a quantum register with system qubits
+    so_ci_vec = np.zeros(2**nsporbs)
+    for kk in range (2**nsporbs):
+        if f"{kk:0{nsporbs}b}"[norbs:].count('1')==nelec[0] and f"{kk:0{nsporbs}b}"[:norbs].count('1')==nelec[1]:
+            so_ci_vec[kk] = ci_vec[lookup[f"{kk:0{nsporbs}b}"[norbs:]],lookup[f"{kk:0{nsporbs}b}"[:norbs]]]
+
+    return so_ci_vec
+
 qr1 = QuantumRegister(np.sum(ncas_sub)*2, 'q1')
 new_circuit = QuantumCircuit(qr1)
-new_circuit.initialize(total_state, qubits=qr1)
+new_circuit.initialize( get_so_ci_vec(las.ci[0][0],2*ncas_sub[0],las.nelecas_sub[0]) , [0,1,4,5])
+new_circuit.initialize( get_so_ci_vec(las.ci[1][0],2*ncas_sub[1],las.nelecas_sub[1]) , [2,3,6,7])
+'''
+# Create a quantum register with system qubits
+# qubit mapping f1 alpha_o alpha_v beta_o beta_v f1: q0, q2, q4, q6
+# qubit mapping f2 alpha_o alpha_v beta_o beta_v f2: q1, q3, q5, q7
+# total system alpha_o alpha_o alpha_v alpha_v beta_o beta_o beta_v beta_v
+
+qr1 = QuantumRegister(np.sum(ncas_sub)*2, 'q1')
+new_circuit = QuantumCircuit(qr1)
+new_circuit.initialize(state_list[0], qubits=[0,1,4,5])
+new_circuit.initialize(state_list[1], qubits=[2,3,6,7])
 
 # Gate counts for initialization
-target_basis = ['rx', 'ry', 'rz', 'h', 'cx']
-circ_for_counts = transpile(new_circuit, basis_gates=target_basis, optimization_level=0)
-init_op_dict = circ_for_counts.count_ops()
-init_ops = sum(init_op_dict.values())
-print("Operations: {}".format(init_op_dict))
-print("Total operations: {}".format(init_ops))
+if args.dist == 0.0:
+    target_basis = ['rx', 'ry', 'rz', 'h', 'cx']
+    circ_for_counts = transpile(new_circuit, basis_gates=target_basis, optimization_level=0)
+    init_op_dict = circ_for_counts.count_ops()
+    init_ops = sum(init_op_dict.values())
+    print("Operations: {}".format(init_op_dict))
+    print("Total operations: {}".format(init_ops))
 
+# Tracking the convergence of the VQE
+counts = []
+values = []
+def store_intermediate_result(eval_count, parameters, mean, std):
+    counts.append(eval_count)
+    values.append(mean)
+
+#init_test = HartreeFock(8,(2,2), qubit_converter)
 # Setting up the VQE
 ansatz = UCC(qubit_converter=qubit_converter, num_particles=(2,2), num_spin_orbitals=8, excitations='sd', alpha_spin=True, beta_spin=True, generalized=True, initial_state=new_circuit)
 #optimizer = L_BFGS_B(maxfun=10000, iprint=101)
-optimizer = COBYLA()
-ansatz.parameter_bounds = np.array([[-np.pi,np.pi] for x in range(26)])
-algorithm = VQE(ansatz=ansatz, optimizer=optimizer, quantum_instance=new_instance) 
+optimizer = COBYLA(maxiter=50)
+algorithm = VQE(ansatz=ansatz, optimizer=optimizer, quantum_instance=new_instance, callback=store_intermediate_result) 
 
 # Gate counts for VQE (includes initialization)
-params = np.zeros(50)
-vqe_ops = 0
-circ_list = transpile(algorithm.construct_circuit(params, hamiltonian), basis_gates=target_basis, optimization_level=0)
-for circ in circ_list:
-    vqe_op_dict = circ.count_ops()
-    vqe_ops += sum(vqe_op_dict.values())
-print("Number of circuits in list: ",len(circ_list))
-print("Operations: {}".format(vqe_op_dict))
-print("Total operations: {}".format(vqe_ops))
+if args.dist == 0.0:
+    params = np.zeros(50)
+    vqe_ops = 0
+    circ_list = transpile(algorithm.construct_circuit(params, hamiltonian), basis_gates=target_basis, optimization_level=0)
+    for circ in circ_list:
+        vqe_op_dict = circ.count_ops()
+        vqe_ops += sum(vqe_op_dict.values())
+    print("Number of circuits in list: ",len(circ_list))
+    print("Operations: {}".format(vqe_op_dict))
+    print("Total operations: {}".format(vqe_ops))
 
 # Running the VQE
 t0 = time.time()
@@ -405,6 +468,11 @@ vqe_result = algorithm.compute_minimum_eigenvalue(hamiltonian)
 print(vqe_result)
 t1 = time.time()
 print("Time taken for VQE: ",t1-t0)
+print("VQE counts: ", counts)
+print("VQE energies: ", values)
 
 # Saving all relevant results in a dict
-np.save('results_{}_{}.npy'.format(args.an, args.shots), {'n_frag':len(ncas_sub), 'phases':phases_list, 'energies':en_list, 'frag_qpe_ops':total_op_list, 'init_op_dict': init_op_dict, 'init_ops': init_ops, 'vqe_op_dict':vqe_op_dict, 'vqe_ops': vqe_ops, 'vqe_result':vqe_result})
+if args.dist == 0.0:
+    np.save('results_{}_{}_{}.npy'.format(args.an, args.shots, args.dist), {'n_frag':len(ncas_sub), 'phases':phases_list, 'energies':en_list, 'frag_qpe_ops':total_op_list, 'init_op_dict': init_op_dict, 'init_ops': init_ops, 'vqe_op_dict':vqe_op_dict, 'vqe_ops': vqe_ops, 'vqe_result':vqe_result, 'qpe_result':result_list, 'vqe_en_vals':values, 'vqe_counts':counts})
+else:
+    np.save('results_{}_{}_{}.npy'.format(args.an, args.shots, args.dist), {'n_frag':len(ncas_sub), 'phases':phases_list, 'energies':en_list, 'vqe_result':vqe_result, 'qpe_result':result_list})

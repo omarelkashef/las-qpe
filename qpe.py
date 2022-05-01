@@ -86,7 +86,7 @@ mo_coeff = mc.mo_coeff.copy ()
 las = LASSCF (mf, norb_f, nelec_f, spin_sub=(1,1)).set (mo_coeff=mo_coeff)
 
 # Localize the chosen fragment active spaces
-loc_mo_coeff = las.localize_init_guess ([[0,1,2,3,4],[5,6,7,8,9]], mf.mo_coeff)
+loc_mo_coeff = las.localize_init_guess ([[0,1,2,3,4],[5,6,7,8,9]])
 las.kernel(loc_mo_coeff)
 loc_mo_coeff = las.mo_coeff
 print("LASSCF energy: ", las.e_tot)

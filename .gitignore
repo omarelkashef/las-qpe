@@ -1,4 +1,5 @@
 fcidump*
 *.log
 *.out
+*.png
 .DS_store

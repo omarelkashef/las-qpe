@@ -40,21 +40,23 @@ plt.xlabel('Number of ancilla qubits')
 plt.ylabel('Number of gates')
 #fig.savefig("gates_c4h6_1.png")
 
-an_list = an_list[1:]
-en_list = en_list[1:]
-err_list = err_list[1:]
+#an_list = an_list[1:]
+#en_list = en_list[1:]
+#err_list = err_list[1:]
 
 fig = plt.figure()
-plt.plot(an_list, en_list[:5])
-plt.axhline()
-plt.xlabel('Number of ancilla qubits')
-plt.ylabel('E [Hartree]')
+plt.plot(an_list, en_list[6:], 'o-')
+plt.axhline(color='k')
+plt.xlabel('Number of ancilla qubits', fontsize=16)
+plt.ylabel('E [Hartree]', fontsize=16)
+plt.ylim(-1.2, 0.2)
 fig.savefig("en_{}_shots_c4h6_0.png".format(shots), bbox_inches="tight")
 fig = plt.figure()
-plt.plot(an_list, err_list[:5])
-plt.axhline()
-plt.axhspan(0.0, 0.0016, facecolor='0.5', alpha=0.5)
-plt.xlabel('Number of ancilla qubits')
-plt.ylabel('E-E(FCI) [Hartree]')
+plt.plot(an_list, err_list[6:], 'o-')
+plt.axhline(color='k')
+plt.axhspan(-0.188, 0.188, facecolor='0.5', alpha=0.5)
+plt.xlabel('Number of ancilla qubits', fontsize=16)
+plt.ylabel('E-E(FCI) [Hartree]', fontsize=16)
+plt.ylim(-1.2, 1.2)
 fig.savefig("err_{}_shots_c4h6_0.png".format(shots), bbox_inches="tight")
 

@@ -18,9 +18,11 @@ for frag in frag_list:
         results = np.load('results_{}_{}.npy'.format(an, shots), allow_pickle=True).item()
         fig = plt.figure(figsize=(12,4.8))
         plt.bar(range(len(results['phases'][frag])), list(results['phases'][frag].values()))
-        plt.xticks(range(len(results['phases'][frag])), list(results['phases'][frag].keys()), fontsize=8, rotation=45, ha="right")
-        plt.xlabel('Ancilla qubit states')
-        plt.ylabel('Probability')
+        plt.xticks(range(len(results['phases'][frag])), list(results['phases'][frag].keys()), fontsize=16, rotation=45, ha="right")
+        if an == 6 or an == 8 or an == 10:
+            plt.xticks(color='w')
+        plt.xlabel('Ancilla qubit states', fontsize=16)
+        plt.ylabel('Probability', fontsize=16)
         fig.savefig("{}_qubits_{}_shots_h2_{}.png".format(an, shots, frag), bbox_inches="tight")
 
         most_likely_an = max(results['phases'][frag], key=results['phases'][frag].get)
@@ -40,21 +42,22 @@ plt.xlabel('Number of ancilla qubits')
 plt.ylabel('Number of gates')
 fig.savefig("gates_h2_1.png")
 
-an_list = an_list[1:]
-en_list = en_list[1:]
-err_list = err_list[1:]
+#an_list = an_list[1:]
+#en_list = en_list[1:]
+#err_list = err_list[1:]
 
 fig = plt.figure()
-plt.plot(an_list, en_list[6:])
-plt.axhline()
-plt.xlabel('Number of ancilla qubits')
-plt.ylabel('E [Hartree]')
+plt.plot(an_list, en_list[6:], 'o-')
+plt.axhline(color='k')
+plt.xlabel('Number of ancilla qubits', fontsize=16)
+plt.ylabel('E [Hartree]', fontsize=16)
+plt.ylim(-0.4, 0.8)
 fig.savefig("en_{}_shots_h2_1.png".format(shots), bbox_inches="tight")
 fig = plt.figure()
-plt.plot(an_list, err_list[6:])
-plt.axhline()
-plt.axhspan(0.0, 0.0016, facecolor='0.5', alpha=0.5)
-plt.xlabel('Number of ancilla qubits')
-plt.ylabel('E-E(FCI) [Hartree]')
+plt.plot(an_list, err_list[6:], 'o-')
+plt.axhline(color='k')
+plt.axhspan(-0.355, 0.355, facecolor='0.5', alpha=0.5)
+plt.xlabel('Number of ancilla qubits', fontsize=16)
+plt.ylabel('E-E(FCI) [Hartree]', fontsize=16)
+plt.ylim(-0.4, 0.8)
 fig.savefig("err_{}_shots_h2_1.png".format(shots), bbox_inches="tight")
-

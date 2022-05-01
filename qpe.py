@@ -53,10 +53,6 @@ args = parser.parse_args()
 
 # Define molecule: (H2)_2
 xyz = get_geom('scan', dist=args.dist)
-#xyz = '''H 0.0 0.0 0.0
-#             H 1.0 0.0 0.0
-#             H 0.2 1.6 0.1
-#             H 1.159166 1.3 -0.1'''
 mol = gto.M (atom = xyz, basis = 'sto-3g', output='h4_sto3g_{}.log'.format(args.dist),
     symmetry=False, verbose=lib.logger.DEBUG)
 
@@ -154,11 +150,6 @@ for idx in idx_list[1:]:
 
 # using the built-in LASCI function h1e_for_cas
 h1_las = las.h1e_for_cas()
-
-# Trying CASSCF h1
-mc = mcscf.CASCI(mf,4,4)
-mc.kernel(loc_mo_coeff)
-cas_h1e, e_core = mc.h1e_for_cas()
 
 # Just using h1e_for_cas as my fragment h1
 h1_frag = []
@@ -267,7 +258,7 @@ for frag in range(len(ncas_sub)):
     scaled_hamiltonian = -pe_scale.scale * hamiltonian_no_id  
 
     # Default evolution: PauliTrotterEvolution
-    evolution = PauliTrotterEvolution()
+    evolution = PauliTrotterEvolution(reps=3)
 
     # Create the unitary by evolving the Hamiltonian
     # Here is the source of Trotter error

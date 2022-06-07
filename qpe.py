@@ -366,4 +366,4 @@ print("Phases: ",phases_list)
 print("en_list: ",en_list)
 print("total_op_list: ",total_op_list)
 
-np.save("qpe_state.npy", state_list, allow_pickle=True)
+np.save("qpe_state_{}.npy".format(args.dist), state_list, allow_pickle=True)

@@ -88,7 +88,7 @@ loc_mo_coeff = las.mo_coeff
 print("LASSCF energy: ", las.e_tot)
 '''
 # Create LASSCF object
-# Keywords: (wavefunction obj, num_alpha in each subspace, num_beta in each subspace, spin multiplicity in each subspace)
+# Keywords: (wavefunction obj, num_orb in each subspace, (num_alpha in each subspace, num_beta in each subspace), spin multiplicity in each subspace)
 #las = LASSCF(mf, (2,),(2,), spin_sub=(1,))
 #las = LASSCF(mf, (1,1),(1,1), spin_sub=(2,2))
 las = LASSCF(mf, (2,2),(2,2), spin_sub=(1,1))

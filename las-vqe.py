@@ -53,7 +53,6 @@ from qiskit.algorithms.phase_estimators import PhaseEstimationResult
 from qiskit.opflow import PauliTrotterEvolution,SummedOp,PauliOp,MatrixOp,PauliSumOp,StateFn
 
 parser = ArgumentParser(description='Do LAS-VQE, specifying num of ancillas and shots')
-parser.add_argument('--an', type=int, default=1, help='number of ancilla qubits')
 parser.add_argument('--dist', type=float, default=1.35296239, help='distance of H2s from one another or C=C bond distance scaling in butadiene')
 parser.add_argument('--shots', type=int, default=1024, help='number of shots for the simulator')
 args = parser.parse_args()
@@ -80,7 +79,7 @@ norb = 8
 nelec = 8
 norb_f = (4,4)
 nelec_f = ((2,2),(2,2))
-mol = structure (0.0, 0.0, output='c4h6_631g_{}_{}.log'.format(args.an, args.shots), verbose=lib.logger.DEBUG)
+mol = structure (0.0, 0.0, output='c4h6_631g_{}.log'.format(args.dist), verbose=lib.logger.DEBUG)
 
 # Do RHF
 mf = scf.RHF(mol).run()
@@ -102,7 +101,7 @@ loc_mo_coeff = las.mo_coeff
 print("LASSCF energy: ", las.e_tot)
 '''
 # Create LASSCF object
-# Keywords: (wavefunction obj, num_orb in each subspace, (num_alpha in each subspace, num_beta in each subspace), spin multiplicity in each subspace)
+# Keywords: (wavefunction obj, num_orb in each subspace, (nelec in each subspace)/((num_alpha, num_beta) in each subspace), spin multiplicity in each subspace)
 #las = LASSCF(mf, (2,),(2,), spin_sub=(1,))
 #las = LASSCF(mf, (1,1),(1,1), spin_sub=(2,2))
 las = LASSCF(mf, (2,2),(2,2), spin_sub=(1,1))
@@ -194,7 +193,7 @@ second_q_ops = driver_result.second_q_ops()
 # They don't necessarily have to be the same as for the fragment QPE
 # Using statevector here is much faster than the AerSimulator
 qubit_converter = QubitConverter(mapper = JordanWignerMapper(), two_qubit_reduction=False)
-new_instance = QuantumInstance(backend = Aer.get_backend('aer_simulator_statevector'), shots=1024)
+new_instance = QuantumInstance(backend = Aer.get_backend('aer_simulator_statevector'), shots=args.shots)
 
 # This just outputs a qubit op corresponding to a 2nd quantized op
 qubit_ops = [qubit_converter.convert(op) for op in second_q_ops]
@@ -289,6 +288,6 @@ print("VQE energies: ", values)
 
 # Saving all relevant results in a dict
 if args.dist == 0.0:
-    np.save('results_{}_{}_{}_vqe.npy'.format(args.an, args.shots, args.dist), {'init_op_dict': init_op_dict, 'init_ops': init_ops, 'vqe_op_dict':vqe_op_dict, 'vqe_ops': vqe_ops, 'vqe_result':vqe_result, 'vqe_en_vals':values, 'vqe_counts':counts, 'nuc_rep': las.energy_nuc()})
+    np.save('results_{}_{}_vqe.npy'.format(args.shots, args.dist), {'init_op_dict': init_op_dict, 'init_ops': init_ops, 'vqe_op_dict':vqe_op_dict, 'vqe_ops': vqe_ops, 'vqe_result':vqe_result, 'vqe_en_vals':values, 'vqe_counts':counts, 'nuc_rep': las.energy_nuc()})
 else:
-    np.save('results_{}_{}_{}_vqe.npy'.format(args.an, args.shots, args.dist), {'vqe_result':vqe_result, 'vqe_en_vals':values, 'vqe_counts':counts, 'nuc_rep': las.energy_nuc()})
+    np.save('results_{}_{}_vqe.npy'.format(args.shots, args.dist), {'vqe_result':vqe_result, 'vqe_en_vals':values, 'vqe_counts':counts, 'nuc_rep': las.energy_nuc()})

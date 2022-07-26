@@ -108,9 +108,9 @@ print("LASSCF energy: ", las.e_tot)
 ncore = las.ncore
 ncas = las.ncas
 ncas_sub = las.ncas_sub
-nelec_cas = las.nelecas
+nelecas_sub = las.nelecas_sub
 
-print ("Ncore: ", ncore, "Ncas: ", ncas, "Ncas_sub: ", ncas_sub, "Nelec_cas: ", nelec_cas)
+print ("Ncore: ", ncore, "Ncas: ", ncas, "Ncas_sub: ", ncas_sub, "Nelecas_sub: ", nelecas_sub)
 
 # Situation so far: we have loc_mo_coeff containing [:,ncore:nsub1:nsub2:next]
 # Creating a list of slices for core, subspace1, subspace2, etc
@@ -187,9 +187,9 @@ result_list = []
 frag_t0 = time.time()
 
 for frag in range(len(ncas_sub)):
-    # WARNING: these have to be set manually for each fragment!
-    num_alpha = int(nelec_cas[0] / 2)
-    num_beta = int(nelec_cas[1] / 2)
+    # Get alpha and beta electrons from LAS
+    num_alpha = nelecas_sub[frag][0]
+    num_beta = nelecas_sub[frag][1]
 
     # For QPE, need second_q_ops
     # Hacking together an ElectronicStructureDriverResult to create second_q_ops

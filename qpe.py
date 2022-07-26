@@ -66,7 +66,7 @@ norb = 8
 nelec = 8
 norb_f = (4,4)
 nelec_f = ((2,2),(2,2))
-mol = structure (0.0, 0.0, output='c4h6_631g_{}_{}.log'.format(args.an, args.shots), verbose=lib.logger.DEBUG)
+mol = structure (dnn1=args.dist, dnn2=args.dist, output='c4h6_631g_{}_{}.log'.format(args.an, args.shots), verbose=lib.logger.DEBUG)
 
 # Do RHF
 mf = scf.RHF(mol).run()

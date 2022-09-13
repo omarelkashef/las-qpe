@@ -45,13 +45,13 @@ from qiskit.algorithms.optimizers import L_BFGS_B, COBYLA, BOBYQA
 from qiskit.algorithms.phase_estimators import PhaseEstimationResult
 from qiskit.opflow import PauliTrotterEvolution,SummedOp,PauliOp,MatrixOp,PauliSumOp,StateFn
 
-parser = ArgumentParser(description='Do LAS-UCC, specifying num of ancillas and shots')
+parser = ArgumentParser(description='Do LAS-QPE, specifying num of ancillas and shots')
 parser.add_argument('--an', type=int, default=1, help='number of ancilla qubits')
-parser.add_argument('--dist', type=float, default=1.35296239, help='distance of H2s from one another')
+parser.add_argument('--dist', type=float, default=1.0, help='distance of H2s from one another')
 parser.add_argument('--shots', type=int, default=1024, help='number of shots for the simulator')
 args = parser.parse_args()
 
-# Define molecule: (H2)_2
+# Define molecule: (H2)_3
 xyz = get_geom('scan', dist=args.dist)
 mol = gto.M (atom = xyz, basis = 'sto-3g', output='h4_sto3g_{}.log'.format(args.dist),
     symmetry=False, verbose=lib.logger.DEBUG)
@@ -60,46 +60,15 @@ mol = gto.M (atom = xyz, basis = 'sto-3g', output='h4_sto3g_{}.log'.format(args.
 mf = scf.RHF(mol).run()
 print("HF energy: ", mf.e_tot)
 
-'''
-# Define molecule: C_4H_6
-norb = 8
-nelec = 8
-norb_f = (4,4)
-nelec_f = ((2,2),(2,2))
-mol = structure (dnn1=args.dist, dnn2=args.dist, output='c4h6_631g_{}_{}.log'.format(args.an, args.shots), verbose=lib.logger.DEBUG)
-
-# Do RHF
-mf = scf.RHF(mol).run()
-print("HF energy: ", mf.e_tot)
-
-#CASSCF (for comparison with Matt's code)
-mc = mcscf.CASSCF (mf, norb, nelec).set (fcisolver = csf_solver (mol, smult=1))
-mo_coeff = mc.sort_mo ([11,12,14,15,16,17,21,24])
-mc.kernel (mo_coeff)
-mo_coeff = mc.mo_coeff.copy ()
-
-# Create LASSCF object
-las = LASSCF (mf, norb_f, nelec_f, spin_sub=(1,1)).set (mo_coeff=mo_coeff)
-
-# Localize the chosen fragment active spaces
-loc_mo_coeff = las.localize_init_guess ([[0,1,2,3,4],[5,6,7,8,9]])
-las.kernel(loc_mo_coeff)
-loc_mo_coeff = las.mo_coeff
-print("LASSCF energy: ", las.e_tot)
-'''
 # Create LASSCF object
 # Keywords: (wavefunction obj, num_orb in each subspace, (num_alpha in each subspace, num_beta in each subspace), spin multiplicity in each subspace)
 #las = LASSCF(mf, (2,),(2,), spin_sub=(1,))
-#las = LASSCF(mf, (1,1),(1,1), spin_sub=(2,2))
-las = LASSCF(mf, (2,2),(2,2), spin_sub=(1,1))
-#las = LASSCF(mf, (4,),(4,), spin_sub=(1,))
+las = LASSCF(mf, (2,2,2),(2,2,2), spin_sub=(1,1,1))
 
 # Localize the chosen fragment active spaces
-#frag_atom_list = ((0,1),)
-#frag_atom_list = ((0,),(1,))
-frag_atom_list = ((0,1),(2,3))
-#frag_atom_list = ((0,1,2,3),)
+frag_atom_list = ((0,1),(2,3),(4,5))
 loc_mo_coeff = las.localize_init_guess(frag_atom_list, mf.mo_coeff)
+
 # Run LASSCF
 las.kernel(loc_mo_coeff)
 loc_mo_coeff = las.mo_coeff
@@ -120,24 +89,9 @@ for i, sub in enumerate(ncas_sub):
     idx_list.append(slice(ncore+prev_sub_size, ncore+prev_sub_size + sub))
     prev_sub_size += sub
 
-# To prepare: H_eff = \sum_K H_frag(K)
-# H_frag(K) = h1'_k1^{k2} a^+_{k1} a_{k2} + 1/4 h2_{k2 k4}^{k1 k3} a^+_{k1} a^+_{k3} a_{k4} a_{k2}
-# with h1' = h1_{k1}^{k2} + \sum_i h2_{k2 i}^{k1 i} + \sum{L \neq K} h2_{k2 l2}^{k1 l1} D_{l2}^{l1}
-
-# First, construct D and ints
-# Option 1: AO-basis HF 1-RDM to localized MO basis
-'''
-D = mf.make_rdm1(mo_coeff=mf.mo_coeff)
-D_mo = np.einsum('pi,pq,qj->ij', loc_mo_coeff, D, loc_mo_coeff)
-'''
-# Option 2: Converged LAS 1-RDM
-D_mo = las.make_rdm1(mo_coeff=las.mo_coeff)
-# Convert to spin orbitals
-D_so = np.block([[D_mo, np.zeros_like(D_mo)],[np.zeros_like(D_mo), D_mo]])
-
-nso = mol.nao_nr() * 2
-eri_4fold = ao2mo.kernel(mol.intor('int2e'), mo_coeffs=loc_mo_coeff)
-eri = ao2mo.restore(1, eri_4fold,mol.nao_nr())
+# using the built-in LASCI functions h1e_for_cas, get_h2eff
+h1_las = las.h1e_for_cas()
+eri_cas = las.get_h2eff(loc_mo_coeff)
 
 # Storing each fragment's h1 and h2 as a list
 h1_frag = []
@@ -145,11 +99,8 @@ h2_frag = []
 
 # Then construct h1' for each fragment
 # and for alpha-alpha, beta-beta blocks
-for idx in idx_list[1:]:
-    h2_frag.append(eri[idx,idx,idx,idx])
-
-# using the built-in LASCI function h1e_for_cas
-h1_las = las.h1e_for_cas()
+for idx in range(len(ncas_sub)):
+    h2_frag.append(las.get_h2eff_slice(eri_cas, idx))
 
 # Just using h1e_for_cas as my fragment h1
 h1_frag = []
@@ -258,7 +209,7 @@ for frag in range(len(ncas_sub)):
     scaled_hamiltonian = -pe_scale.scale * hamiltonian_no_id  
 
     # Default evolution: PauliTrotterEvolution
-    evolution = PauliTrotterEvolution(reps=3)
+    evolution = PauliTrotterEvolution(reps=7)
 
     # Create the unitary by evolving the Hamiltonian
     # Here is the source of Trotter error
@@ -312,7 +263,7 @@ for frag in range(len(ncas_sub)):
     # For a given fragment, rerun the QPE until you get the ground state
 
     new_eig = 1e-5
-    max_count = 5
+    max_count = 10
     count = 0
     while np.allclose(new_eig, most_likely_eig) is False:
         print("Reusing... [",count,"]")

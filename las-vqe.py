@@ -127,15 +127,13 @@ nelec_cas = las.nelecas
 # Checking subspace sizes and num. of electrons
 print ("Ncore: ", ncore, "Ncas: ", ncas, "Ncas_sub: ", ncas_sub, "Nelec_cas: ", nelec_cas)
 
-nso = mol.nao_nr() * 2
-eri_4fold = ao2mo.kernel(mol.intor('int2e'), mo_coeffs=loc_mo_coeff)
-eri = ao2mo.restore(1, eri_4fold,mol.nao_nr())
-
-# CASCI h1 for VQE Hamiltonian
+# CASCI h1 & h2 for VQE Hamiltonian
 mc = mcscf.CASCI(mf,4,4)
 mc.kernel(loc_mo_coeff)
 cas_h1e, e_core = mc.h1e_for_cas()
 
+eri_cas = mc.get_h2eff(loc_mo_coeff)
+eri = ao2mo.restore(1, eri_cas,mc.ncas)
 # Gets all acceptable operators for UCCSD
 # excluding intra-fragment ones
 def get_uccsd_op_mod(norb, num_sub):
@@ -267,7 +265,7 @@ algorithm = VQE(ansatz=ansatz, optimizer=optimizer, quantum_instance=new_instanc
 
 # Gate counts for VQE (includes initialization)
 if args.dist == 0.0:
-    params = np.zeros(50)
+    params = np.zeros(146)
     vqe_ops = 0
     circ_list = transpile(algorithm.construct_circuit(params, hamiltonian), basis_gates=target_basis, optimization_level=0)
     for circ in circ_list:

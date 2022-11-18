@@ -204,11 +204,21 @@ state_list = np.load('qpe_state_{}.npy'.format(args.dist), allow_pickle=True)
 '''
 # Initialize using LASCI vector
 # Code stolen from Riddhish
+## This function makes a few assumptions
+## 1. The civector is arranged as a 2D matrix of coeffs
+##    of size [nalphastr, nbetastr]
+## 2. The civector contains all configurations within
+##    the (localized) active space
 def get_so_ci_vec(ci_vec, nsporbs,nelec):
     lookup = {}
     cnt = 0
     norbs = nsporbs//2
 
+    # Here, we set up a lookup dictionary which is
+    # populated when either the number of alpha e-s
+    # or the number of beta electrons is correct
+    # It stores "bitstring" : decimal_value pairs
+    ## The assumption is that nalpha==nbeta
     for ii in range (2**norbs):
         if f"{ii:0{norbs}b}".count('1') == np.sum(nelec)//2:
             lookup[f"{ii:0{norbs}b}"] = cnt
@@ -216,6 +226,9 @@ def get_so_ci_vec(ci_vec, nsporbs,nelec):
     # This is just indexing the hilber space from 0,1,...,mCn
     #print (lookup)
 
+    # Here the spin orbital CI vector is populated
+    # the same lookup is used for alpha and beta, but for two different
+    # sections of the bitstring
     so_ci_vec = np.zeros(2**nsporbs)
     for kk in range (2**nsporbs):
         if f"{kk:0{nsporbs}b}"[norbs:].count('1')==nelec[0] and f"{kk:0{nsporbs}b}"[:norbs].count('1')==nelec[1]:

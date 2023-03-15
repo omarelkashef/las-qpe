@@ -91,7 +91,7 @@ for i, sub in enumerate(ncas_sub):
 
 # using the built-in LASCI functions h1e_for_cas, get_h2eff
 h1_las = las.h1e_for_cas()
-eri_cas = las.get_h2eff(loc_mo_coeff)
+eri_las = las.get_h2eff(loc_mo_coeff)
 
 # Storing each fragment's h1 and h2 as a list
 h1_frag = []

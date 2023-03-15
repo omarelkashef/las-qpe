@@ -4,37 +4,36 @@ from qiskit_nature.properties.second_quantization.electronic import (
     ElectronicEnergy,
     ParticleNumber,
 )
-from qiskit_nature.properties.second_quantization.electronic.integrals import (
-    OneBodyElectronicIntegrals,
-    TwoBodyElectronicIntegrals,
-)
 from qiskit_nature.properties.second_quantization.electronic.bases import ElectronicBasis
 from qiskit_nature.converters.second_quantization import QubitConverter
 from qiskit_nature.mappers.second_quantization import JordanWignerMapper, ParityMapper
 
-def get_hamiltonian(frag, nelecas_sub, ncas_sub, nuc_rep_en, h1_frag, h2_frag):
-    # Get alpha and beta electrons from LAS
-    num_alpha = nelecas_sub[frag][0]
-    num_beta = nelecas_sub[frag][1]
+def get_hamiltonian(frag, nelecas_sub, ncas_sub, h1, h2):
+    if frag is None:
+        num_alpha = nelecas_sub[0]
+        num_beta = nelecas_sub[1]
+        n_so = ncas_sub*2
+    else:
+        # Get alpha and beta electrons from LAS
+        num_alpha = nelecas_sub[frag][0]
+        num_beta = nelecas_sub[frag][1]
+        n_so = ncas_sub[frag]*2
+        h1 = h1[frag]
+        h2 = h2[frag]
 
     # For QPE, need second_q_ops
     # Hacking together an ElectronicStructureDriverResult to create second_q_ops
     # Lines below stolen from qiskit's FCIDump driver and modified
     particle_number = ParticleNumber(
-        num_spin_orbitals=ncas_sub[frag]*2,
+        num_spin_orbitals=n_so,
         num_particles=(num_alpha, num_beta),
     )
 
     # Assuming an RHF reference for now, so h1_b, h2_ab, h2_bb are created using 
     # the corresponding spots from h1_frag and just the aa term from h2_frag
-    print("Nuclear repulsion: ", nuc_rep_en)
-    electronic_energy = ElectronicEnergy(
-        [
+    electronic_energy = ElectronicEnergy.from_raw_integrals(
             # Using MO basis here for simplified conversion
-            OneBodyElectronicIntegrals(ElectronicBasis.MO, (h1_frag[frag], None)),
-            TwoBodyElectronicIntegrals(ElectronicBasis.MO, (h2_frag[frag], h2_frag[frag], h2_frag[frag], None)),
-        ],
-        nuclear_repulsion_energy=nuc_rep_en,
+            ElectronicBasis.MO, h1, h2
     )
 
     # QK NOTE: under Python 3.6, pylint appears to be unable to properly identify this case of

@@ -1,8 +1,7 @@
 #########################
-# Script to run LASSCF, use the statevectors from the fragments  
+# Script to run LASSCF 
+# and use a LASCI vector initialized on the qubits
 # to run a VQE using a generalized UCCSD ansatz on the whole system
-# This script either uses saved QPE statevectors or
-# a LASCI vector initialized on the qubits
 # It can also use an HF initial state
 #########################
 
@@ -87,10 +86,12 @@ print("LASSCF energy: ", las.e_tot)
 '''
 # Create LASSCF object
 # Keywords: (wavefunction obj, num_orb in each subspace, (nelec in each subspace)/((num_alpha, num_beta) in each subspace), spin multiplicity in each subspace)
+#las = LASSCF(mf, (2,),(2,), spin_sub=(1,))
 las = LASSCF(mf, (2,2),(2,2), spin_sub=(1,1))
 #las = LASSCF(mf, (4,),(4,), spin_sub=(1,))
 
 # Localize the chosen fragment active spaces
+#frag_atom_list = ((0,1),)
 frag_atom_list = ((0,1),(2,3))
 #frag_atom_list = ((0,1,2,3),)
 loc_mo_coeff = las.localize_init_guess(frag_atom_list, mf.mo_coeff)
@@ -135,14 +136,44 @@ def custom_excitations(num_spin_orbitals: int,
 hamiltonian = get_hamiltonian(None, mc.nelecas, mc.ncas, cas_h1e, eri)
 #print(hamiltonian)
 
-# Loading the QPE statevector from file
-state_list = np.load('qpe_state_{}.npy'.format(args.dist), allow_pickle=True)
+# Initialize using LASCI vector
+# Code stolen from Riddhish
+## This function makes a few assumptions
+## 1. The civector is arranged as a 2D matrix of coeffs
+##    of size [nalphastr, nbetastr]
+## 2. The civector contains all configurations within
+##    the (localized) active space
+def get_so_ci_vec(ci_vec, nsporbs,nelec):
+    lookup = {}
+    cnt = 0
+    norbs = nsporbs//2
 
-# Create a quantum register with system qubits
+    # Here, we set up a lookup dictionary which is
+    # populated when either the number of alpha e-s
+    # or the number of beta electrons is correct
+    # It stores "bitstring" : decimal_value pairs
+    ## The assumption is that nalpha==nbeta
+    for ii in range (2**norbs):
+        if f"{ii:0{norbs}b}".count('1') == np.sum(nelec)//2:
+            lookup[f"{ii:0{norbs}b}"] = cnt
+            cnt +=1
+    # This is just indexing the hilber space from 0,1,...,mCn
+    #print (lookup)
+
+    # Here the spin orbital CI vector is populated
+    # the same lookup is used for alpha and beta, but for two different
+    # sections of the bitstring
+    so_ci_vec = np.zeros(2**nsporbs)
+    for kk in range (2**nsporbs):
+        if f"{kk:0{nsporbs}b}"[norbs:].count('1')==nelec[0] and f"{kk:0{nsporbs}b}"[:norbs].count('1')==nelec[1]:
+            so_ci_vec[kk] = ci_vec[lookup[f"{kk:0{nsporbs}b}"[norbs:]],lookup[f"{kk:0{nsporbs}b}"[:norbs]]]
+
+    return so_ci_vec
+
 qr1 = QuantumRegister(np.sum(ncas_sub)*2, 'q1')
 new_circuit = QuantumCircuit(qr1)
-new_circuit.initialize(state_list[0], qubits=[0,1,4,5])
-new_circuit.initialize(state_list[1], qubits=[2,3,6,7])
+new_circuit.initialize( get_so_ci_vec(las.ci[0][0],2*ncas_sub[0],las.nelecas_sub[0]) , [0,1,4,5])
+new_circuit.initialize( get_so_ci_vec(las.ci[1][0],2*ncas_sub[1],las.nelecas_sub[1]) , [2,3,6,7])
 
 # Gate counts for initialization
 if args.dist == 0.0:
@@ -162,7 +193,9 @@ def store_intermediate_result(eval_count, parameters, mean, std):
 
 qubit_converter = QubitConverter(mapper = JordanWignerMapper(), two_qubit_reduction=False)
 new_instance = QuantumInstance(backend = Aer.get_backend('aer_simulator'), shots=args.shots)
+#init_test = HartreeFock(8,(2,2), qubit_converter)
 # Setting up the VQE
+#ansatz = custom_UCC(qubit_converter=qubit_converter, num_particles=(2,2), num_spin_orbitals=8, excitations=custom_excitations, initial_state=init_test, preserve_spin=False)
 ansatz = custom_UCC(qubit_converter=qubit_converter, num_particles=(2,2), num_spin_orbitals=8, excitations=custom_excitations, initial_state=new_circuit, preserve_spin=False)
 optimizer = L_BFGS_B(maxfun=10000, iprint=101)
 init_pt = np.zeros(146)

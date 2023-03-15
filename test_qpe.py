@@ -104,7 +104,7 @@ def test_frag_np_eig():
 
     np_val = [-1.62002897,-1.59428151]
     for frag in range(len(las.ncas_sub)):
-        hamiltonian = get_hamiltonian(frag, las.nelecas_sub, las.ncas_sub, las.energy_nuc(), h1_frag, h2_frag)
+        hamiltonian = get_hamiltonian(frag, las.nelecas_sub, las.ncas_sub, h1_frag, h2_frag)
 
         # Set the backend
         quantum_instance = QuantumInstance(backend = Aer.get_backend('aer_simulator'), shots=1024)

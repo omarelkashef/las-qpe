@@ -113,7 +113,7 @@ frag_t0 = time.time()
 
 for frag in range(len(las.ncas_sub)):
     # Build qubit Hamiltonian
-    hamiltonian = get_hamiltonian(frag, las.nelecas_sub, las.ncas_sub, las.energy_nuc(), h1_frag, h2_frag)
+    hamiltonian = get_hamiltonian(frag, las.nelecas_sub, las.ncas_sub, h1_frag, h2_frag)
 
     # Set the backend
     quantum_instance = QuantumInstance(backend = Aer.get_backend('aer_simulator'), shots=args.shots)

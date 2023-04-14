@@ -15,35 +15,21 @@ from mrh.my_pyscf.mcscf.lasscf_o0 import LASSCF
 from mrh.my_pyscf.mcscf.lasci import h1e_for_cas
 #from c4h6_struct import structure
 from get_geom import get_geom
+from get_hamiltonian import get_hamiltonian
 
 # Qiskit imports
-from qiskit_nature.properties.second_quantization.electronic import (
-    ElectronicStructureDriverResult,
-    ElectronicEnergy,
-    ParticleNumber,
-)
-from qiskit_nature.properties.second_quantization.electronic.integrals import (
-    OneBodyElectronicIntegrals,
-    TwoBodyElectronicIntegrals,
-)
-from qiskit_nature.properties.second_quantization.electronic.bases import ElectronicBasis
-from qiskit_nature.converters.second_quantization import QubitConverter
-from qiskit_nature.drivers.second_quantization import PySCFDriver, MethodType
-from qiskit_nature.mappers.second_quantization import JordanWignerMapper, ParityMapper
 from qiskit.providers.aer import StatevectorSimulator, QasmSimulator
 from qiskit import Aer, transpile
-from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
-#from qiskit.quantum_info.states.densitymatrix import DensityMatrix
-from qiskit.visualization import plot_state_city
-from qiskit.quantum_info import DensityMatrix, partial_trace, Statevector
-from qiskit.quantum_info.operators.channel import SuperOp
+from qiskit import QuantumCircuit
+from qiskit_nature.converters.second_quantization import QubitConverter
+from qiskit_nature.mappers.second_quantization import JordanWignerMapper, ParityMapper
+from qiskit.quantum_info import Statevector
 from qiskit.utils import QuantumInstance
 from qiskit_nature.algorithms import VQEUCCFactory, GroundStateEigensolver
-from qiskit_nature.circuit.library import HartreeFock, UCCSD, UCC
-from qiskit.algorithms import NumPyEigensolver, PhaseEstimation, PhaseEstimationScale, VQE 
-from qiskit.algorithms.optimizers import L_BFGS_B, COBYLA, BOBYQA
+from qiskit_nature.circuit.library import HartreeFock
+from qiskit.algorithms import NumPyEigensolver, PhaseEstimation, PhaseEstimationScale
 from qiskit.algorithms.phase_estimators import PhaseEstimationResult
-from qiskit.opflow import PauliTrotterEvolution,SummedOp,PauliOp,MatrixOp,PauliSumOp,StateFn
+from qiskit.opflow import PauliTrotterEvolution,SummedOp,PauliOp,PauliSumOp,StateFn
 
 parser = ArgumentParser(description='Do LAS-QPE, specifying num of ancillas and shots')
 parser.add_argument('--an', type=int, default=1, help='number of ancilla qubits')
@@ -52,7 +38,8 @@ parser.add_argument('--shots', type=int, default=1024, help='number of shots for
 args = parser.parse_args()
 
 # Define molecule: (H2)_3
-xyz = get_geom('scan', dist=args.dist)
+xyz = get_geom('close')
+#xyz = get_geom('scan', dist=args.dist)
 mol = gto.M (atom = xyz, basis = 'sto-3g', output='h4_sto3g_{}.log'.format(args.dist),
     symmetry=False, verbose=lib.logger.DEBUG)
 
@@ -63,10 +50,12 @@ print("HF energy: ", mf.e_tot)
 # Create LASSCF object
 # Keywords: (wavefunction obj, num_orb in each subspace, (num_alpha in each subspace, num_beta in each subspace), spin multiplicity in each subspace)
 #las = LASSCF(mf, (2,),(2,), spin_sub=(1,))
-las = LASSCF(mf, (2,2,2),(2,2,2), spin_sub=(1,1,1))
+#las = LASSCF(mf, (2,2,2),(2,2,2), spin_sub=(1,1,1))
+las = LASSCF(mf, (2,2),(2,2), spin_sub=(1,1))
 
 # Localize the chosen fragment active spaces
-frag_atom_list = ((0,1),(2,3),(4,5))
+#frag_atom_list = ((0,1),(2,3),(4,5))
+frag_atom_list = ((0,1),(2,3))
 loc_mo_coeff = las.localize_init_guess(frag_atom_list, mf.mo_coeff)
 
 # Run LASSCF
@@ -76,39 +65,24 @@ print("LASSCF energy: ", las.e_tot)
 
 ncore = las.ncore
 ncas = las.ncas
-ncas_sub = las.ncas_sub
-nelecas_sub = las.nelecas_sub
 
-print ("Ncore: ", ncore, "Ncas: ", ncas, "Ncas_sub: ", ncas_sub, "Nelecas_sub: ", nelecas_sub)
+print ("Ncore: ", ncore, "Ncas: ", ncas, "Ncas_sub: ", las.ncas_sub, "Nelecas_sub: ", las.nelecas_sub)
 
-# Situation so far: we have loc_mo_coeff containing [:,ncore:nsub1:nsub2:next]
-# Creating a list of slices for core, subspace1, subspace2, etc
-idx_list = [slice(0,ncore)]
-prev_sub_size = 0
-for i, sub in enumerate(ncas_sub):
-    idx_list.append(slice(ncore+prev_sub_size, ncore+prev_sub_size + sub))
-    prev_sub_size += sub
-
-# using the built-in LASCI functions h1e_for_cas, get_h2eff
+# Using the built-in LASCI functions h1e_for_cas, get_h2eff
 h1_las = las.h1e_for_cas()
-eri_cas = las.get_h2eff(loc_mo_coeff)
+eri_las = las.get_h2eff(loc_mo_coeff)
 
 # Storing each fragment's h1 and h2 as a list
 h1_frag = []
 h2_frag = []
 
-# Then construct h1' for each fragment
-# and for alpha-alpha, beta-beta blocks
-for idx in range(len(ncas_sub)):
-    h2_frag.append(las.get_h2eff_slice(eri_cas, idx))
-
-# Just using h1e_for_cas as my fragment h1
-h1_frag = []
-for f in range(len(ncas_sub)):
-    h1_frag.append(h1_las[f][0][0])
+# Then construct h2 for each fragment
+for idx in range(len(las.ncas_sub)):
+    h2_frag.append(las.get_h2eff_slice(eri_las, idx))
+    h1_frag.append(h1_las[idx][0][0])
 
 # Checking that the fragment Hamiltonian shapes are correct
-for f in range(len(ncas_sub)):
+for f in range(len(las.ncas_sub)):
     print("H1_frag shape: ", h1_frag[f].shape)
     print("H2_frag shape: ", h2_frag[f].shape)
 
@@ -137,46 +111,9 @@ result_list = []
 
 frag_t0 = time.time()
 
-for frag in range(len(ncas_sub)):
-    # Get alpha and beta electrons from LAS
-    num_alpha = nelecas_sub[frag][0]
-    num_beta = nelecas_sub[frag][1]
-
-    # For QPE, need second_q_ops
-    # Hacking together an ElectronicStructureDriverResult to create second_q_ops
-    # Lines below stolen from qiskit's FCIDump driver and modified
-    particle_number = ParticleNumber(
-        num_spin_orbitals=ncas_sub[frag]*2,
-        num_particles=(num_alpha, num_beta),
-    )
-
-    # Assuming an RHF reference for now, so h1_b, h2_ab, h2_bb are created using 
-    # the corresponding spots from h1_frag and just the aa term from h2_frag
-    print("Nuclear repulsion: ", las.energy_nuc())
-    electronic_energy = ElectronicEnergy(
-        [
-            # Using MO basis here for simplified conversion
-            OneBodyElectronicIntegrals(ElectronicBasis.MO, (h1_frag[frag], None)),
-            TwoBodyElectronicIntegrals(ElectronicBasis.MO, (h2_frag[frag], h2_frag[frag], h2_frag[frag], None)),
-        ],
-        nuclear_repulsion_energy=las.energy_nuc(),
-    )
-
-    # QK NOTE: under Python 3.6, pylint appears to be unable to properly identify this case of
-    # nested abstract classes (cf. https://github.com/Qiskit/qiskit-nature/runs/3245395353).
-    # However, since the tests pass I am adding an exception for this specific case.
-    # pylint: disable=abstract-class-instantiated
-    driver_result = ElectronicStructureDriverResult()
-    driver_result.add_property(electronic_energy)
-    driver_result.add_property(particle_number)
-
-    second_q_ops = driver_result.second_q_ops()
-
-    # Choose fermion-to-qubit mapping
-    qubit_converter = QubitConverter(mapper = JordanWignerMapper(), two_qubit_reduction=False)
-    # This just outputs a qubit op corresponding to a 2nd quantized op
-    qubit_ops = [qubit_converter.convert(op) for op in second_q_ops]
-    hamiltonian = qubit_ops[0]
+for frag in range(len(las.ncas_sub)):
+    # Build qubit Hamiltonian
+    hamiltonian = get_hamiltonian(frag, las.nelecas_sub, las.ncas_sub, h1_frag, h2_frag)
 
     # Set the backend
     quantum_instance = QuantumInstance(backend = Aer.get_backend('aer_simulator'), shots=args.shots)
@@ -223,14 +160,16 @@ for frag in range(len(ncas_sub)):
     # QK: Decomposing twice allows some 1Q Hamiltonians to give correct results
     # QK: when using MatrixEvolution(), that otherwise would give incorrect results.
     # QK: It does not break any others that we tested.
-    unitary = unitary_circuit.decompose().decompose()
+    unitary = unitary_circuit.decompose()
 
     # Printing this is not a good idea because the circuit is very large
     #print(unitary)
 
+    qubit_converter = QubitConverter(mapper = JordanWignerMapper(), two_qubit_reduction=False)
+    
     # Create an HF initial state and add it to the estimate function
     # For our H_2 system, 4 spin orbs, 1 alpha 1 beta electron
-    init_state = HartreeFock(ncas_sub[frag]*2, (num_alpha,num_beta), qubit_converter)
+    init_state = HartreeFock(las.ncas_sub[frag]*2, (las.nelecas_sub[frag][0],las.nelecas_sub[frag][1]), qubit_converter)
 
     # Gate counts
     if int(args.dist) == 0.0:
@@ -285,7 +224,7 @@ for frag in range(len(ncas_sub)):
 
         # Run the circuit with the save instruction
         circuit_result = new_qpe_solver._quantum_instance.execute(new_circuit)
-        phases = new_qpe_solver._compute_phases(ncas_sub[frag]*2, circuit_result)
+        phases = new_qpe_solver._compute_phases(las.ncas_sub[frag]*2, circuit_result)
         gs_result = PhaseEstimationResult(args.an, circuit_result=circuit_result, phases=phases)
         pe_scale = PhaseEstimationScale.from_pauli_sum(hamiltonian_no_id)
         scaled_phases = pe_scale.scale_phases(gs_result.filter_phases(cutoff=0.0, as_float=True), id_coefficient=id_coefficient)

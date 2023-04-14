@@ -3,3 +3,4 @@ fcidump*
 *.out
 *.png
 .DS_store
+__pycache__/

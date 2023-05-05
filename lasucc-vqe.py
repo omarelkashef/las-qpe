@@ -40,8 +40,10 @@ from qiskit_nature.second_q.circuit.library import UCCSD , HartreeFock
 from qiskit.algorithms.minimum_eigensolvers import VQE 
 from qiskit.algorithms.optimizers import L_BFGS_B, COBYLA, BOBYQA
 from qiskit.opflow import PauliTrotterEvolution,SummedOp,PauliOp,MatrixOp,PauliSumOp,StateFn
-from qiskit.primitives import Estimator
+#from qiskit.primitives import Estimator
 from qiskit import Aer
+from qiskit_ibm_runtime import QiskitRuntimeService, Estimator, Session, Options
+
 
 
 
@@ -143,7 +145,7 @@ def custom_excitations(num_spin_orbitals: int,
     
     return excitations
 
-hamiltonian = get_hamiltonian(None, mc.nelecas, mc.ncas, cas_h1e, eri)
+hamiltonian = get_hamiltonian(xyz, None, mc.nelecas, mc.ncas, cas_h1e, eri)
 #print(hamiltonian)
 
 # Initialize using LASCI vector
@@ -213,11 +215,9 @@ ansatz = custom_UCC(qubit_converter=qubit_converter, num_particles=(2,2), num_sp
 optimizer = L_BFGS_B(maxfun=10000, iprint=101)
 init_pt = np.zeros(146)
 #optimizer = COBYLA(maxiter=1000)
-with Session(service = service , backend = backend):
-    estimator = Estimator()
-    options = Options()
-    options.shots =  args.shots
-    algorithm = VQE(ansatz=ansatz, optimizer=optimizer, quantum_instance=new_instance, initial_point=init_pt, callback=store_intermediate_result) 
+options = {"shots": args.shots}
+estimator = Estimator(options)
+algorithm = VQE(estimator=estimator,  ansatz=ansatz, optimizer=optimizer, initial_point=init_pt, callback=store_intermediate_result) 
 
 
 # Gate counts for VQE (includes initialization)

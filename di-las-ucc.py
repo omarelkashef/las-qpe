@@ -200,7 +200,8 @@ ansatz = custom_UCC(qubit_converter=qubit_converter, num_particles=(2,2), num_sp
 optimizer = L_BFGS_B(maxfun=10000, iprint=101)
 init_pt = np.zeros(146)
 #optimizer = COBYLA(maxiter=1000)
-algorithm = VQE(ansatz=ansatz, optimizer=optimizer, quantum_instance=new_instance, initial_point=init_pt, callback=store_intermediate_result) 
+algorithm = VQE(estimator = estimator, ansatz=ansatz, optimizer=optimizer,
+               initial_point=init_pt, callback=store_intermediate_result) 
 
 # Gate counts for VQE (includes initialization)
 if args.dist == 0.0:

@@ -1,4 +1,4 @@
-##########################
+#########################
 # Script to run LASSCF 
 # and use a LASCI vector initialized on the qubits
 # to run a VQE using a generalized UCCSD ansatz on the whole system
@@ -6,11 +6,13 @@
 #########################
 
 import numpy as np
+import json
 import logging
 import time
 from argparse import ArgumentParser
 from typing import Tuple, List
 import itertools
+import sys
 # PySCF imports
 from pyscf import gto, scf, lib, mcscf, ao2mo
 from pyscf.tools import fcidump
@@ -21,7 +23,7 @@ from mrh.exploratory.unitary_cc import uccsd_sym1, lasuccsd
 #from c4h6_struct import structure
 from get_geom import get_geom
 from custom_UCC import custom_UCC
-from get_hamiltonian import get_hamiltonian
+from get_hamiltonian_v2 import get_hamiltonian
 
 # Qiskit imports
 #from qiskit_nature.converters.second_quantization import QubitConverteri
@@ -37,12 +39,11 @@ from qiskit import QuantumCircuit, QuantumRegister, ClassicalRegister
 #from qiskit_nature.circuit.library import HartreeFock, UCCSD
 from qiskit_nature.second_q.circuit.library import UCCSD , HartreeFock
 #from qiskit.algorithms import NumPyEigensolver, VQE 
-from qiskit.algorithms.minimum_eigensolvers import VQE 
+from qiskit.algorithms.minimum_eigensolvers import VQE , NumPyMinimumEigensolver
 from qiskit.algorithms.optimizers import L_BFGS_B, COBYLA, BOBYQA
 from qiskit.opflow import PauliTrotterEvolution,SummedOp,PauliOp,MatrixOp,PauliSumOp,StateFn
-#from qiskit.primitives import Estimator
+from qiskit.primitives import Estimator
 from qiskit import Aer
-from qiskit_ibm_runtime import QiskitRuntimeService, Estimator, Session, Options
 
 
 
@@ -142,10 +143,10 @@ def custom_excitations(num_spin_orbitals: int,
     i_idxs = uop.i_idxs
     for a,i in zip(a_idxs,i_idxs):
         excitations.append((tuple(i),tuple(a[::-1])))
-    
+
     return excitations
 
-hamiltonian = get_hamiltonian(xyz, None, mc.nelecas, mc.ncas, cas_h1e, eri)
+hamiltonian = get_hamiltonian(None, mc.nelecas, mc.ncas, cas_h1e, eri)
 #print(hamiltonian)
 
 # Initialize using LASCI vector
@@ -204,20 +205,25 @@ def store_intermediate_result(eval_count, parameters, mean, std):
     counts.append(eval_count)
     values.append(mean)
     stds.append(std)
+    print("one more iteration")
 
 qubit_converter = QubitConverter(mapper = JordanWignerMapper(), two_qubit_reduction=False)
 #init_test = HartreeFock(8,(2,2), qubit_converter)
 
 # Setting up the VQE
-backend = Aer.get_backend('aer_simulator')
+backend = Aer.get_backend('qasm_simulator')
+numpy_eigensolver = NumPyMinimumEigensolver()
+exact_result = numpy_eigensolver.compute_minimum_eigenvalue(operator=hamiltonian).eigenvalue
+#print(exact_result);
+#sys.exit();
 #ansatz = custom_UCC(qubit_converter=qubit_converter, num_particles=(2,2), num_spin_orbitals=8, excitations=custom_excitations, initial_state=init_test, preserve_spin=False)
 ansatz = custom_UCC(qubit_converter=qubit_converter, num_particles=(2,2), num_spin_orbitals=8, excitations=custom_excitations, initial_state=new_circuit, preserve_spin=False)
-optimizer = L_BFGS_B(maxfun=10000, iprint=101)
+#optimizer = L_BFGS_B(maxfun=10000, iprint=101)
 init_pt = np.zeros(146)
-#optimizer = COBYLA(maxiter=1000)
+optimizer = COBYLA(maxiter=1000)
 options = {"shots": args.shots}
-estimator = Estimator(options)
-algorithm = VQE(estimator=estimator,  ansatz=ansatz, optimizer=optimizer, initial_point=init_pt, callback=store_intermediate_result) 
+estimator = Estimator(options=options)
+algorithm = VQE(estimator=estimator, ansatz=ansatz, optimizer=optimizer, initial_point=init_pt, callback=store_intermediate_result)
 
 
 # Gate counts for VQE (includes initialization)
@@ -234,7 +240,7 @@ if args.dist == 0.0:
 
 # Running the VQE
 t0 = time.time()
-vqe_result = algorithm.compute_minimum_eigenvalue(hamiltonian)
+vqe_result = algorithm.compute_minimum_eigenvalue(hamiltonian).eigenvalue
 print(vqe_result)
 t1 = time.time()
 print("Time taken for VQE: ",t1-t0)
@@ -245,4 +251,9 @@ print("VQE energies: ", values)
 if args.dist == 0.0:
     np.save('results_{}_{}_vqe.npy'.format(args.shots, args.dist), {'init_op_dict': init_op_dict, 'init_ops': init_ops, 'vqe_op_dict':vqe_op_dict, 'vqe_ops': vqe_ops, 'vqe_result':vqe_result, 'vqe_en_vals':values, 'vqe_counts':counts, 'nuc_rep': las.energy_nuc()})
 else:
-    np.save('results_{}_{}_vqe.npy'.format(args.shots, args.dist), {'vqe_result':vqe_result, 'vqe_en_vals':values, 'vqe_counts':counts, 'nuc_rep': las.energy_nuc()})
+    dic =  {'vqe_result':vqe_result, 'vqe_en_vals':values, 'vqe_counts':counts, 'nuc_rep': las.energy_nuc() , "exact_result": exact_result}
+    with open("result.json" , "w") as f:
+        json.dump(dic , f)
+    np.save('results_{}_{}_vqe.npy'.format(args.shots, args.dist), dic,
+            allow_pickle = True , fix_imports = True)
+

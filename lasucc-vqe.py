@@ -49,7 +49,7 @@ from qiskit_ibm_runtime import QiskitRuntimeService, Estimator, Session, Options
 
 
 parser = ArgumentParser(description='Do LAS-VQE, specifying num of ancillas and shots')
-parser.add_argument('--dist', type=float, default=1.35296239, help='distance of H2s from one another or C=C bond distance scaling in butadiene')
+parser.add_argument('--dist', type=float, default=1.0, help='distance of H2s from one another or C=C bond distance scaling in butadiene')
 parser.add_argument('--shots', type=int, default=1024, help='number of shots for the simulator')
 args = parser.parse_args()
 
